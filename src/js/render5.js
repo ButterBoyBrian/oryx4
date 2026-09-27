@@ -597,7 +597,7 @@ function drawBossBar5(g, T, wt, wf) {
     g.fillStyle = red; g.fillRect(bx, by, bw * fr, bh);
     if (T >= f.T && T < T_KILL && S.hits.some(h => h.surv && wt - h.wt >= 0 && wt - h.wt < 0.15)) { g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(bx + bw * fr - 6, by, 6, bh); }
     label = 'SURVIVE  ' + left.toFixed(1) + ' s';
-    txt(g, 'every hit speeds the clock', bx + 8, by + bh / 2 + 1, 12, '#ffe0c0', { a: 'left', sw: 3 });
+    txt(g, f.sv.cap !== undefined && f.sv.bonus >= f.sv.cap ? 'the clock runs at full speed' : 'every hit speeds the clock', bx + 8, by + bh / 2 + 1, 12, '#ffe0c0', { a: 'left', sw: 3 });
   } else if (F.party) {   // a party: one segment per hero, each draining with its own health
     const tot = F.party.reduce((s, id) => s + HERO5[id].hp, 0); let x = bx, rem = 0;
     for (const id of F.party) {

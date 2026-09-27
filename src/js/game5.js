@@ -16,7 +16,7 @@ const FORMS5 = [
   { ai: 'sword', w: 4, id: 'warrior', name: 'THE COLOSSEUM', party: ['warrior', 'paladin'], tr: 'weapon', surv: { base: 54, K: 16000 } },
   { ai: 'knight1', w: 5, id: 'knight', name: 'THE KNIGHT', hp: 300000, tr: 'weapon', stance: 'SHIELD CHARGE' },
   { ai: 'knight2', w: 5, id: 'knight', name: 'THE KNIGHT', hp: 300000, tr: 'stance', stance: 'BLADESTORM' },
-  { ai: 'knight3', w: 5, id: 'knight', name: 'THE KNIGHT', tr: 'last', stance: 'LAST STAND', surv: { base: 25, K: 16000 } },
+  { ai: 'knight3', w: 5, id: 'knight', name: 'THE KNIGHT', tr: 'last', stance: 'LAST STAND', surv: { base: 35, K: 20000, cap: 15 } },   // 35 s if you never hit him, never less than 20
 ];
 // the stolen heroes: health (the Colosseum's champions have none: they are outlasted), name, and the shot of their last volley
 const HERO5 = {
@@ -60,8 +60,8 @@ const per5 = p => p / V5.rate;   // a pattern period, scaled by V5.rate
 const BOSS_CFG = { 4: { maxhp: MAXHP, floor: PHASE_FLOOR, splits: SPLITS, phases: PHASES, name: BOSS },
   5: { maxhp: MAXHP5, floor: FLOOR5, splits: SPLITS5, phases: PHASES5, name: 'Oryx the Mad God V' } };
 function selectBoss(n) { const c = BOSS_CFG[n]; BOSS_N = n; MAXHP = c.maxhp; PHASE_FLOOR = c.floor; SPLITS = c.splits; PHASES = c.phases; BOSS = c.name; setDifficulty(CUR_DIFF); }
-// Oryx V's own tweaks to a difficulty (Easy gets a little more health, so a steady player always sees the Knight)
-const DIFF5 = { easy: { hp: 3500, regen: 130 } };
+// Oryx V's own tweaks to a difficulty (none at present: the same Easy, Hard and Diabolical as Oryx IV)
+const DIFF5 = {};
 const diffOf = d => BOSS_N === 5 ? Object.assign({}, DIFFS[d], DIFF5[d]) : DIFFS[d];
 
 // ---------- state ----------
@@ -77,7 +77,7 @@ function initS5(practice) {
 }
 function formOf5(T) { const L = S.f5.log; for (let k = L.length - 1; k > 0; k--) if (T >= L[k].mT) return L[k].i; return L[0].i; }
 const knight5 = () => FORMS5[S.f5.i].w === 5;   // is he on the field himself? (the parties have no weak point)
-const survLeft5 = T => { const f = S.f5; return f.sv.base - Math.max(0, T - f.T) - f.sv.bonus; };
+const survLeft5 = T => { const f = S.f5; return f.sv.base - Math.max(0, T - f.T) - Math.min(f.sv.bonus, f.sv.cap ?? Infinity); };   // (cap: the most your hits can take off the clock)
 function vuln5(T) {
   if (T < TL.land + 0.5 || T >= T_KILL || !knight5()) return false;
   const f = S.f5; return !(T >= f.mT && T < f.T);
@@ -483,7 +483,7 @@ const HAI5 = {
         }
         if (once5(T0, T1, B + 1.6)) {   // BACKSTAB: a ring of daggers flies out, hangs, and flies on (he has just reappeared)
           const x = h.x, y = h.y, o = S.rng() * TAU;
-          for (let i = 0; i < 10; i++) { const th = o + i * TAU / 10; e5(B + 1.6, { cx: x, cy: y, r0: 1.0, vr: 6, ar: -8, stop: 0.75, th, k: 'dagger', life: 1.35 }); e5(B + 1.6, { cx: x, cy: y, r0: 3.25, vr: 5.5, th, k: 'dagger', dl: 1.35, rv: B + 2.95, tg: 1, hid: 1, cont: 1, life: 2.4 }); }
+          for (let i = 0; i < 8; i++) { const th = o + i * TAU / 8; e5(B + 1.6, { cx: x, cy: y, r0: 1.0, vr: 6, ar: -8, stop: 0.75, th, k: 'dagger', life: 1.35 }); e5(B + 1.6, { cx: x, cy: y, r0: 3.25, vr: 5.5, th, k: 'dagger', dl: 1.35, rv: B + 2.95, tg: 1, hid: 1, cont: 1, life: 2.4 }); }
           S.ev.push({ T: B + 1.6, type: 'blink5' }); S.fx.push({ T: B + 1.6, type: 'smoke', x, y, out: 1 });
         }
         for (const [t] of ticks(T0, T1, B + 2.5, B + 3.8, 0.6)) fan5(t, h.x, h.y, 7, 0.14, 11, 'dagger', { r0: 1.0, th: leadA(h.x, h.y, 9, 0.6), ar: -7.5, life: 1.45 });
@@ -582,7 +582,7 @@ const CHASE5 = {
     fire(h, T0, T1, C) { for (const [t, k] of ticks(T0, T1, C, Infinity, BEAT)) fan5(t, h.x, h.y, 3, 0.2, 6.5, k % 2 ? 'note2' : 'note', { r0: 1.2 }); } },
   rogue: { move(h, T) { dash5(h, T, { spd: 18, tele: 0.45, k: 'dagger', over: 3.5, trail: 0.35, col: 'v' }); return { kind: 'hold', dur: 0.45 }; } },   // dash after dash
   assassin: { move: () => ({ kind: 'chase', spd: 6, stop: 5.5, dur: 2 }),   // her wake is poison
-    fire(h, T0, T1, C) { for (const [t] of ticks(T0, T1, C, Infinity, 0.2)) e5(t, { cx: h.x, cy: h.y, r0: 0, vr: 0, th: 0, k: 'venom', dl: 0.3, rv: t + 0.3, tg: 1, life: 2.2 }); } },
+    fire(h, T0, T1, C) { for (const [t] of ticks(T0, T1, C, Infinity, 0.25)) e5(t, { cx: h.x, cy: h.y, r0: 0, vr: 0, th: 0, k: 'venom', dl: 0.3, rv: t + 0.3, tg: 1, life: 2.2 }); } },
   trickster: { move(h, T, k) { if (k % 2) { blink5(h, T, ...spot5(h, 7.5, (S.rng() - 0.5) * 4), 'w'); return { kind: 'hold', dur: 0.6 }; } return { kind: 'strafe', r: 7.5, spd: 5, dir: h.dir, dur: 1.5 }; },
     start(h, T) {   // her copies appear around you, and one after another they dash straight through you
       const p = S.p, a0 = S.rng() * TAU;
@@ -1007,6 +1007,8 @@ function charge5(t, tl, spd) {
 }
 
 // ---------- VI. THE KNIGHT: Oryx himself ----------
+// the Last Stand's pacing: a new layer every `step` s; the periods of its shield rings (of ringN shields), blade showers, aimed fans and spiral arms
+const LS5 = { step: 7, ring: 1.1, ringN: 50, shower: 0.09, fan: 0.9, arm: 0.2 };
 const AI5 = {
   knight1(T0, T1, B0) {   // SHIELD CHARGE: he runs you down along a marked path, and the impact rings out
     const b = S.boss;
@@ -1026,16 +1028,16 @@ const AI5 = {
     for (const [t, k] of ticks(T0, T1, B0 + 2.5, Infinity, per5(1.2))) { const g = R(); ring5(t, b.x, b.y, 52, 3.6, 'nova', k * 0.3, { r0: 3.0, gaps: [[g, 3 / 52], [g + 0.5, 3 / 52]] }); }
     for (const [t] of ticks(T0, T1, B0 + 2.0, Infinity, per5(0.65))) fan5(t, b.x, b.y, 5, 0.15, 8.5, 'blade', { r0: 2.8 });
   },
-  knight3(T0, T1, B0) {   // LAST STAND: everything he has, one more layer every 6 s, as the hall closes in, until his clock runs out
-    const b = S.boss, R = S.rng, lvl = Math.floor(Math.max(0, T1 - B0) / 6), F = lvl >= 4 ? 1.25 : 1;
-    for (const [t] of ticks(T0, T1, B0, Infinity, per5(0.7 / F))) { const g = R(); ring5(t, b.x, b.y, 56, 4.6, 'kwall', R() * TAU, { r0: 3.0, gaps: [0, 1 / 3, 2 / 3].map(q => [g + q, 4 / 56]) }); }
-    for (const [t] of ticks(T0, T1, B0 + 0.3, Infinity, per5(0.38 / F))) fan5(t, b.x, b.y, 6, 0.15, 9, 'blade', { r0: 2.6 });
-    for (const [t] of ticks(T0, T1, B0 + 1.5, Infinity, per5((lvl >= 1 ? 0.55 : 0.9) / F))) pillar5(t, S.p.x, S.p.y, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160, burst: { n: 4, spd: 3.0, k: 'blade', life: 2.5 } });
-    if (lvl >= 1) {
-      if (!S.f5.st.lane) { const Bs = T1 + 1.5, arms = [{ th0: -Math.PI / 2, w: 0.5, r0: 3.1, r1: 12.4, gaps: [[6.4, 8.4]] }]; S.f5.st.lane = { Bs, arms }; S.lanes5.push({ T0: T1, T1: Infinity, cx: 0, cy: 0, B0: Bs, arms, k: 'kblade' }); }
-      const { Bs, arms } = S.f5.st.lane; setPiece(T0, T1, Bs, 1e9, Infinity, (t, dl, rv) => arms5(t, dl, rv, Bs, arms, 0, 0, 'kblade'));
-    }
-    if (lvl >= 2) { if (S.f5.st.ch === undefined) S.f5.st.ch = T1; for (const [t, k] of ticks(T0, T1, S.f5.st.ch, Infinity, per5(1.2 / F))) chasers(t, b.x, b.y, 4, k * 0.8); }
+  knight3(T0, T1, B0) {   // LAST STAND: no lanes to run for this time; a storm of every sword he took, read and threaded where you stand
+    const L5 = LS5, b = S.boss, R = S.rng, lvl = Math.floor(Math.max(0, T1 - B0) / L5.step), F = lvl >= 3 ? 1.2 : 1, far = 14;   // (far: every shot is gone once it is past the wall)
+    // the Shield of Ogmur: slow rings of shields with no gap; slip between two plates as each one passes (they spread wider farther out)
+    for (const [t] of ticks(T0, T1, B0, Infinity, per5(L5.ring / F))) ring5(t, b.x, b.y, L5.ringN, 2.6, 'kwall', R() * TAU, { r0: 3.0, life: (far - 3) / 2.6 });
+    // a shower of blades flung every way
+    for (const [t] of ticks(T0, T1, B0 + 0.4, Infinity, per5(L5.shower / F))) for (let j = 0; j < 3; j++) { const v = 3.5 + R() * 3; e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: v, th: R() * TAU, k: 'blade', life: (far - 2.8) / v }); }
+    // then fans at where you stand: a short step aside is enough
+    if (lvl >= 1) for (const [t] of ticks(T0, T1, B0 + L5.step, Infinity, per5(L5.fan / F))) fan5(t, b.x, b.y, 7, 0.12, 8, 'blade', { r0: 2.6, life: (far - 2.6) / 8 });
+    // then two sets of spiral arms turning against each other: a lattice that drifts past you
+    if (lvl >= 2) for (const [t] of ticks(T0, T1, B0 + 2 * L5.step, Infinity, per5(L5.arm / F))) { const u = t - B0; for (let a = 0; a < 4; a++) for (const d of [1, -1]) e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: 4, th: d * 0.45 * u + a * Math.PI / 2 + (d < 0 ? Math.PI / 4 : 0), k: 'nova', life: (far - 2.8) / 4 }); }
   },
 };
 
