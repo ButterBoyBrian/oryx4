@@ -1841,25 +1841,29 @@ function drawArena(g, T, wt, mid) {
     g.restore();
   }
 }
-// the final seconds: light-green rings mark the radii where every clock hand has a gap (or doesn't reach);
-// they flash when a hand is about to sweep past you
+// the final seconds: as a clock hand closes in on you, the safe radii (where every hand has a gap or doesn't reach)
+// fade in as soft green shading, a half circle facing you
 function drawSafeLanes(g, T) {
-  if (S.survHands === undefined || T < S.survHands - 1.5 || T >= T_KILL || S.dead) return;
-  const hands = survHands(S.survW), cut = [];
+  if (S.survHands === undefined || T < S.survHands || T >= T_KILL || S.dead) return;
+  const hands = survHands(S.survW), pa = Math.atan2(S.p.y, S.p.x), pr = Math.hypot(S.p.x, S.p.y);
+  let tmin = Infinity;   // seconds until a blade crosses your angle
+  for (const h of hands) {
+    if (pr > h.r1 + 0.3) continue;
+    const w = handW(h), th = -Math.PI / 2 + w * (T - S.survHands);
+    tmin = Math.min(tmin, (((pa - th) * Math.sign(w)) % TAU + TAU) % TAU / Math.abs(w));
+  }
+  const u = sat(1 - tmin / 1.2); if (u <= 0) return;
+  const cut = [];
   for (const h of hands) { let r = h.r0; for (const [a, z] of h.gaps) { cut.push([r, a]); r = z; } cut.push([r, h.r1]); }
   cut.sort((a, b) => a[0] - b[0]);
   const safe = []; let r = BODY_R;
   for (const [a, z] of cut) { if (a > r + 0.3) safe.push([r, a]); r = Math.max(r, z); }
   if (r < 11.9) safe.push([r, 12.1]);
-  const pa = Math.atan2(S.p.y, S.p.x), soon = T < S.survHands + 0.5 || hands.some(h => {   // the hands appearing, or a blade about to cross your angle
-    const w = handW(h), th = -Math.PI / 2 + w * (T - S.survHands), d = ((pa - th) * Math.sign(w) % TAU + TAU) % TAU;
-    return d / Math.abs(w) < 1.0 && Math.hypot(S.p.x, S.p.y) < h.r1 + 0.3;
-  });
-  const a = soon ? 0.6 + 0.4 * Math.sin(T * 18) : 0.45, [cx, cy] = w2s(0, 0), k = TILE * CAM.z;
-  g.fillStyle = `rgba(125,255,176,${0.06 + 0.06 * (soon ? a : 0)})`;
+  const [cx, cy] = w2s(0, 0), k = TILE * CAM.z, A = 0.3 * u * u;
+  const grd = g.createConicGradient(pa - Math.PI / 2, cx, cy);   // strongest toward you, fading out a quarter turn either side
+  grd.addColorStop(0, 'rgba(125,255,176,0)'); grd.addColorStop(0.25, `rgba(125,255,176,${A})`); grd.addColorStop(0.5, 'rgba(125,255,176,0)'); grd.addColorStop(1, 'rgba(125,255,176,0)');
+  g.fillStyle = grd;
   for (const [r0, r1] of safe) { g.beginPath(); g.arc(cx, cy, r1 * k, 0, TAU); g.arc(cx, cy, r0 * k, 0, TAU, true); g.fill(); }
-  g.strokeStyle = `rgba(125,255,176,${a})`; g.lineWidth = soon ? 4 : 3;
-  for (const [r0, r1] of safe) for (const rr of [r0, r1]) { g.beginPath(); g.arc(cx, cy, rr * k, 0, TAU); g.stroke(); }
 }
 function drawFloorFx(g, T, wt) {
   // entry warnings for attacks that come from outside the arena: glowing dashes on the rim, one per bullet
