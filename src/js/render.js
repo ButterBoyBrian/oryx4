@@ -678,10 +678,11 @@ function drawPlayer(g, T, wt, wf) {
   }
   g.globalCompositeOperation = 'lighter'; glowAt(g, 'g', x, y + 0.3 * TILE * CAM.z, 90 * CAM.z, 0.22); g.globalCompositeOperation = 'source-over';
   const hurt = S.phits.length && S.phits[S.phits.length - 1].wt <= wt && wt - S.phits[S.phits.length - 1].wt < 0.08;
-  const ax = img.width === 10 ? 4.5 : 4;   // the hitbox sits on the torso centre (columns 2-6 side-on, 1-6 front/back)
-  g.setTransform(s * flip, 0, 0, s, x, y); g.drawImage(img, -ax, -img.height * 0.6); g.setTransform(1, 0, 0, 1, 0, 0);
+  const ax = 5;   // the hitbox sits on the torso centre: grid column 4 in every pose (+1 for the outline padding)
+  g.globalAlpha = 0.5;   // half-transparent: bullets and the hitbox dot stay visible through the character
+  g.setTransform(s * flip, 0, 0, s, x, y); g.drawImage(img, -ax, -img.height * 0.6); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
   if (atk) { const tip = [w2s(px + Math.cos(S.p.aim) * 0.6, py - 0.25 + Math.sin(S.p.aim) * 0.6)][0]; g.globalCompositeOperation = 'lighter'; glowAt(g, 'p', tip[0], tip[1], 70 * CAM.z, 0.7); g.globalCompositeOperation = 'source-over'; }   // cast flash
-  if (hurt) { g.setTransform(s * flip, 0, 0, s, x, y); g.globalAlpha = 0.5; g.drawImage(tintCache(img), -ax, -img.height * 0.6); g.globalAlpha = 1; g.setTransform(1, 0, 0, 1, 0, 0); }
+  if (hurt) { g.setTransform(s * flip, 0, 0, s, x, y); g.globalAlpha = 0.3; g.drawImage(tintCache(img), -ax, -img.height * 0.6); g.globalAlpha = 1; g.setTransform(1, 0, 0, 1, 0, 0); }
   // hp / mp bars under the sprite
   const bw = 62 * CAM.z, by = y + 0.5 * TILE * CAM.z;
   const hp = S.hhp[wf] / P_MAXHP, mp = S.hmp[wf] / P_MAXMP;
@@ -703,8 +704,10 @@ function drawRangeRing(g, T, wt, wf) {
 function drawHitbox(g, T, wf) {
   if (S.dead || T >= T_KILL) return;
   const [sx, sy] = w2s(RP.x, RP.y), x = Math.round(sx), y = Math.round(sy);   // whole pixels: perfectly symmetric
-  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 5.5, 0, TAU); g.fill();
-  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill();
+  g.globalCompositeOperation = 'lighter'; glowAt(g, 'w', x, y, 34, 0.55); g.globalCompositeOperation = 'source-over';   // soft halo
+  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 8, 0, TAU); g.fill();
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 6.5, 0, TAU); g.fill();
+  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 4.5, 0, TAU); g.fill();
 }
 // the Heart of the Hour: the only part of the boss that takes damage
 function drawWeakPoint(g, T, wt) {
