@@ -23,6 +23,7 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   if (G.mode === 'title') {
     const di = DIFF_ORDER.indexOf(CUR_DIFF);
+    if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'ArrowDown' || e.code === 'KeyS' || e.code === 'Tab') pickBoss(BOSS_N === 5 ? 4 : 5);
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') pickDiff(DIFF_ORDER[Math.max(0, di - 1)]);
     if (e.code === 'ArrowRight' || e.code === 'KeyD') pickDiff(DIFF_ORDER[Math.min(2, di + 1)]);
     if (e.code === 'Enter' || e.code === 'NumpadEnter') begin(0);
@@ -50,7 +51,7 @@ function canvasPos(e) { const r = CV.getBoundingClientRect(); return [(e.clientX
 CV.addEventListener('mousemove', e => { [G.mx, G.my] = canvasPos(e); });
 CV.addEventListener('mousedown', e => {
   e.preventDefault(); audioInit(); [G.mx, G.my] = canvasPos(e);
-  if (G.mode === 'title') { if (e.button !== 0) return; const hit = DIFF_ORDER.find((d, i) => Math.abs(G.mx - diffX(i)) < 100 && Math.abs(G.my - 906) < 28), pr = practiceHit(); if (hit) pickDiff(hit); else if (pr >= 0) begin(pr + 1); else begin(0); return; }
+  if (G.mode === 'title') { if (e.button !== 0) return; const hit = DIFF_ORDER.find((d, i) => Math.abs(G.mx - diffX(i)) < 100 && Math.abs(G.my - 906) < 28), pr = practiceHit(), bs = bossHit(); if (bs) pickBoss(bs); else if (hit) pickDiff(hit); else if (pr >= 0) begin(pr + 1); else begin(0); return; }
   if (e.button === 0) G.lmb = true;
   if (e.button === 1 && G.mode === 'play') toggleAuto();
 });
@@ -58,10 +59,14 @@ addEventListener('mouseup', e => { if (e.button === 0) G.lmb = false; });
 CV.addEventListener('contextmenu', e => e.preventDefault());
 CV.addEventListener('auxclick', e => e.preventDefault());
 const diffX = i => 1140 + i * 220;
-const PRACTICE_BTN = ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], practX = i => 1055 + i * 122, PRACT_Y = 784;
-const practiceHit = () => PRACTICE_BTN.findIndex((_, i) => Math.abs(G.mx - practX(i)) < 58 && Math.abs(G.my - PRACT_Y) < 18);
+const PRACTICE_BTNS = { 4: ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], 5: ['STAFF', 'WAND', 'BOW', 'DAGGER', 'SWORD', 'KNIGHT'] }, practX = i => 1055 + i * 122, PRACT_Y = 784;
+const practiceHit = () => PRACTICE_BTNS[BOSS_N].findIndex((_, i) => Math.abs(G.mx - practX(i)) < 58 && Math.abs(G.my - PRACT_Y) < 18);
+// the two fights: tabs at the top of the title screen
+const bossX = n => n === 4 ? 1240 : 1480, BOSS_TAB_Y = 44;
+const bossHit = () => [4, 5].find(n => Math.abs(G.mx - bossX(n)) < 110 && Math.abs(G.my - BOSS_TAB_Y) < 26);
+function pickBoss(n) { if (n === BOSS_N) return; selectBoss(n); store.set('boss', n); uiBlip(n === 5 ? 1.2 : 0.9); }
 function pickDiff(d) { if (d === CUR_DIFF) return; setDifficulty(d); store.set('difficulty', d); uiBlip(d === 'easy' ? 0.8 : d === 'hard' ? 1.0 : 1.3); }
-const pbKey = () => 'pb6.' + CUR_DIFF;
+const pbKey = () => (BOSS_N === 5 ? 'o5pb.' : 'pb6.') + CUR_DIFF, attKey = () => BOSS_N === 5 ? 'attempts5' : 'attempts';
 function toggleAuto() { G.autofire = !G.autofire; store.set('autofire', G.autofire); uiBlip(G.autofire ? 1.25 : 0.8); }
 function togglePause() {
   G.paused = !G.paused;
@@ -80,7 +85,7 @@ function begin(practice) {
   audioInit(); uiBlip(1.5);
   G.practice = practice; G.mode = 'play'; G.paused = false; G.rHint = 0;
   if (LA.ctx && LA.ctx.state === 'suspended') LA.ctx.resume(); G.newPB = false; G.deadAt = 0;
-  if (!practice) { G.attempts = store.get('attempts', 0) + 1; store.set('attempts', G.attempts); }
+  if (!practice) { G.attempts = store.get(attKey(), 0) + 1; store.set(attKey(), G.attempts); }
   startGame(practice);
   const pb = practice ? null : store.get(pbKey(), null);
   G.prevPB = pb ? pb.total : null;
@@ -158,12 +163,14 @@ function drawDeath(x, T, now) {
   x.fillStyle = '#3a3644'; x.fillRect(cx - 8, cy - 70, 16, 90); x.fillRect(cx - 34, cy - 44, 68, 16);
   x.fillStyle = '#2a2433'; x.fillRect(cx - 110, cy + 106, 220, 18);
   txt(x, 'YOU DIED', cx, cy + 190, 64, '#ff4f6a', { f: 'P2P', sw: 10, sc: '#2a0508', w: 400 });
-  const cause = 'Killed by ' + BOSS + (phaseOf(S.dead) === 4 ? ' at midnight' : '');
+  const hp = (MAXHP - S.cum[S.wf]) / MAXHP * 100, F5 = BOSS_N === 5 ? FORMS5[S.f5.i] : null;
+  const cause = 'Killed by ' + (F5 && F5.party ? F5.name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace('The ', 'the ') + ', the heroes he stole' : BOSS + (F5 && F5.surv ? ' in his Last Stand' : !F5 && phaseOf(S.dead) === 4 ? ' at midnight' : ''));
   txt(x, cause, cx, cy + 262, 28, '#ffd9de', { sw: 5 });
-  const ph = PHASES[phaseOf(S.dead)], hp = (MAXHP - S.cum[S.wf]) / MAXHP * 100;
-  txt(x, (S.dead >= TL.sv ? 'The Final Seconds — ' + Math.max(0, survLeft(S.dead)).toFixed(1) + 's left' : 'Phase ' + ph.num + ' — ' + ph.name + '   ·   boss HP ' + hp.toFixed(1) + '%') + '   ·   ' + fmtTime(S.dead - T_RUN), cx, cy + 310, 24, '#c9b8d8', { sw: 4 });
+  const ph = F5 ? PHASES5[F5.w] : PHASES[phaseOf(S.dead)];
+  txt(x, (!F5 && S.dead >= TL.sv ? 'The Final Seconds — ' + Math.max(0, survLeft(S.dead)).toFixed(1) + 's left' : 'Phase ' + ph.num + ' — ' + ph.name + (F5 && F5.stance ? ' · ' + F5.stance : '') + '   ·   ' + (F5 && F5.surv ? Math.max(0, survLeft5(S.dead)).toFixed(1) + ' s left on the clock' : 'boss HP ' + hp.toFixed(1) + '%')) + '   ·   ' + fmtTime(S.dead - T_RUN), cx, cy + 310, 24, '#c9b8d8', { sw: 4 });
   txt(x, 'R — try again        ENTER — title', cx, cy + 380, 22, Math.floor(u * 2) % 2 ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
-  if (!G.practice && phaseOf(S.dead) >= 1) txt(x, 'Tip: press ' + (S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1) + ' on the title screen to practice this phase.', cx, cy + 424, 18, '#9c95ab', { sw: 3 });
+  const pn = F5 ? F5.w + 1 : S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1;
+  if (!G.practice && pn >= 2) txt(x, 'Tip: press ' + pn + ' on the title screen to practice this phase.', cx, cy + 424, 18, '#9c95ab', { sw: 3 });
   x.globalAlpha = 1;
 }
 function drawPause(x) {
@@ -186,6 +193,8 @@ function drawTitle(x, t) {
   for (const s of STARS) { const sx = ((s.x + t * 6 * s.p) % 2200 + 2200) % 2200 - 140, sy = s.y + 260; if (sx > W || sy > H || sy < 0) continue; x.globalAlpha = 0.4 + 0.4 * Math.sin(t * 2 + s.tw); x.fillStyle = s.c; x.fillRect(sx, sy, s.s, s.s); }
   x.globalAlpha = 1;
   const cx = 560, cy = 470;
+  if (BOSS_N === 5) drawTitleArt5(x, t, cx, cy);
+  else {
   x.save(); x.translate(cx, cy); x.globalAlpha = 0.28;
   x.strokeStyle = '#d1a12a'; x.lineWidth = 3; x.beginPath(); x.arc(0, 0, 400, 0, TAU); x.stroke(); x.beginPath(); x.arc(0, 0, 362, 0, TAU); x.stroke();
   for (let k = 0; k < 60; k++) { x.save(); x.rotate(k * TAU / 60); x.fillStyle = '#d1a12a'; x.fillRect(-2, -400, 4, k % 5 === 0 ? 30 : 12); x.restore(); }
@@ -204,32 +213,41 @@ function drawTitle(x, t) {
     for (const [ex, ey] of BOSS_EYES) glowAt(x, 'r', ox + (ex + 1.5) * s, oy + (ey + 1.5) * s, 100, 0.8 + 0.2 * Math.sin(t * 5));
     x.globalCompositeOperation = 'source-over';
   }
-  txt(x, 'ORYX THE MAD GOD IV', 1360, 170, 50, '#ffcf5a', { f: 'P2P', sw: 9, sc: '#2a0508', w: 400 });
-  txt(x, '— THE UNWOUND —', 1360, 238, 26, '#ff6477', { f: 'P2P', sw: 5, w: 400 });
-  txt(x, 'a fan-made boss rush · play as ' + NW + ' the Wizard', 1360, 290, 22, '#c9b8d8', { sw: 0 });
+  }
+  // the two fights
+  for (const n of [4, 5]) {
+    const on = n === BOSS_N, hv = bossHit() === n, bx = bossX(n);
+    panel(x, bx - 110, BOSS_TAB_Y - 24, 220, 48, { bg: on ? (n === 5 ? 'rgba(46,34,6,0.95)' : 'rgba(40,10,20,0.95)') : 'rgba(14,10,18,0.85)', bd: on ? (n === 5 ? '#ffd23f' : '#ff6477') : hv ? '#8a7a9a' : '#3a3346', lw: on ? 3 : 2 });
+    txt(x, n === 5 ? 'ORYX V' : 'ORYX IV', bx, BOSS_TAB_Y - 6, on ? 20 : 17, on ? (n === 5 ? '#ffe07a' : '#ff8a9a') : '#9c95ab', { f: 'P2P', sw: 0, w: 400 });
+    txt(x, n === 5 ? 'THE USURPER' : 'THE UNWOUND', bx, BOSS_TAB_Y + 13, 11, on ? '#e8e0f0' : '#6a6a80', { f: 'SilkB', sw: 0, w: 400 });
+  }
+  txt(x, '↑ ↓ choose the fight', 1360, 88, 12, '#6a6a80', { f: 'SilkB', sw: 0, w: 400 });
+  txt(x, BOSS_N === 5 ? 'ORYX THE MAD GOD V' : 'ORYX THE MAD GOD IV', 1360, 170, 50, '#ffcf5a', { f: 'P2P', sw: 9, sc: '#2a0508', w: 400 });
+  txt(x, BOSS_N === 5 ? '— THE USURPER —' : '— THE UNWOUND —', 1360, 238, 26, BOSS_N === 5 ? '#ffe07a' : '#ff6477', { f: 'P2P', sw: 5, w: 400 });
+  txt(x, BOSS_N === 5 ? 'he took the realm’s heroes · now they hunt you · harder than IV' : 'a fan-made boss rush · play as ' + NW + ' the Wizard', 1360, 290, 22, '#c9b8d8', { sw: 0 });
   drawControls(x, 1030, 330);
   const blink = Math.floor(t * 2) % 2 === 0;
   txt(x, 'ENTER or CLICK — begin the run', 1360, 720, 26, blink ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
   // practice: click a phase, or press its number
   txt(x, 'PRACTICE A PHASE — click or press 1–6', 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
   const ph = practiceHit();
-  PRACTICE_BTN.forEach((name, i) => {
+  PRACTICE_BTNS[BOSS_N].forEach((name, i) => {
     const cx = practX(i), on = ph === i;
     panel(x, cx - 58, PRACT_Y - 18, 116, 36, { bg: on ? 'rgba(58,36,88,0.95)' : 'rgba(14,10,18,0.85)', bd: on ? '#c77dff' : '#3a3346', lw: on ? 3 : 2 });
     txt(x, (i + 1) + ' ' + name, cx, PRACT_Y + 1, 13, on ? '#f2ddff' : '#c9b8d8', { f: 'SilkB', sw: 0, w: 400 });
   });
-  const pb = store.get(pbKey(), null), att = store.get('attempts', 0);
+  const pb = store.get(pbKey(), null), att = store.get(attKey(), 0);
   txt(x, DIFFS[CUR_DIFF].name + ' personal best: ' + (pb ? fmtTime(pb.total) : '—') + '    ·    attempts: ' + att, 1360, 822, 22, '#ffd23f', { sw: 3 });
-  txt(x, 'At the twelfth bell, midnight falls. Survive it.', 1360, 852, 20, '#ff9aa8', { sw: 3 });
+  txt(x, BOSS_N === 5 ? 'Five parties of stolen heroes. Then the Knight himself.' : 'At the twelfth bell, midnight falls. Survive it.', 1360, 852, 20, BOSS_N === 5 ? '#ffe07a' : '#ff9aa8', { sw: 3 });
   // difficulty chooser
   DIFF_ORDER.forEach((d, i) => {
     const D = DIFFS[d], on = d === CUR_DIFF, cx = diffX(i), hover = Math.abs(G.mx - cx) < 100 && Math.abs(G.my - 906) < 28;
     panel(x, cx - 100, 878, 200, 56, { bg: on ? 'rgba(40,20,30,0.95)' : 'rgba(14,10,18,0.85)', bd: on ? D.col : hover ? '#8a7a9a' : '#3a3346', lw: on ? 3 : 2 });
     txt(x, D.name, cx, 907, on ? 20 : 17, on ? D.col : '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
   });
-  const D = DIFFS[CUR_DIFF];
+  const D = diffOf(CUR_DIFF);
   txt(x, '← →   ' + D.hp + ' HP  ·  ' + D.regen + ' HP/s regen  ·  ' + (D.pots ? D.pots + ' HP / ' + D.mpots + ' MP potions' : 'no potions'), 1360, 962, 20, D.col, { sw: 3 });
-  const prog = LA.prog;
+  const prog = BOSS_N === 5 ? (LA.prog5 || 0) : LA.prog;
   if (prog < 1) txt(x, 'composing the soundtrack… ' + Math.round(prog * 100) + '%', 1360, 1040, 18, '#7a7a90', { sw: 0 });
   else if (!LA.ctx) txt(x, 'press any key to wake the audio', 1360, 1040, 18, '#7a7a90', { sw: 0 });
   txt(x, 'fan-made · original art & music · not affiliated with DECA Games', 20, 1060, 16, '#5a5566', { a: 'left', sw: 0 });
@@ -247,10 +265,26 @@ function drawCursor(x) {
 // ---------- boot ----------
 (async function boot() {
   await Promise.all(['Pix', 'SilkB', 'P2P', 'Chakra', 'ChakraS'].map(f => document.fonts.load(`20px ${f}`)));
-  buildSprites(); initRender();
+  buildSprites(); buildSprites5(); initRender(); initRender5();
   G.autofire = store.get('autofire', true);
+  selectBoss(store.get('boss', 4) === 5 ? 5 : 4);
   setDifficulty(DIFFS[store.get('difficulty', 'hard')] ? store.get('difficulty', 'hard') : 'hard');
   G.mode = 'title';
   requestAnimationFrame(frame);
-  loadMusic();
+  loadMusic().then(() => loadMusic5());   // one after the other: both render through the same offline audio globals
 })();
+// Oryx V on the title screen: the giant yellow wizard in silhouette, the fifteen heroes he became circling him
+function drawTitleArt5(x, t, cx, cy) {
+  x.save(); x.translate(cx, cy);
+  x.globalAlpha = 0.3; x.strokeStyle = '#d1a12a'; x.lineWidth = 3; x.beginPath(); x.arc(0, 0, 400, 0, TAU); x.stroke(); x.beginPath(); x.arc(0, 0, 330, 0, TAU); x.stroke();
+  x.globalAlpha = 1; x.imageSmoothingEnabled = false;
+  FORM5_IDS.forEach((id, i) => { const a = -Math.PI / 2 + i * TAU / 15 + t * 0.05, ic = SPR5.icon[id]; x.globalAlpha = 0.55 + 0.25 * Math.sin(t * 2 + i); x.drawImage(ic, Math.cos(a) * 365 - 25, Math.sin(a) * 365 - 25, 50, 50); });
+  x.restore(); x.globalAlpha = 1;
+  const sp = SPR5.form.knight, s = 22, bob = Math.sin(t * 1.7) * 6, hx = cx - 9 * s + sp.hand[0] * s, hy = cy - 9 * s - 20 + bob + sp.hand[1] * s, th = 0.35 + 0.05 * Math.sin(t * 1.7);
+  x.globalCompositeOperation = 'lighter'; glowAt(x, 'g', cx, cy - 20, 1000, 0.3 + 0.06 * Math.sin(t * 2)); glowAt(x, 'w', hx + 60, hy - 330, 300, 0.4 + 0.2 * Math.sin(t * 6)); x.globalCompositeOperation = 'source-over';
+  x.globalAlpha = 0.85; x.setTransform(s, 0, 0, s, cx - 9 * s + (sp.lhand[0] - 14 + 9) * s, cy - 9 * s - 20 + bob + (sp.lhand[1] - 8 + 9) * s); x.drawImage(sp.shield, -sp.shieldPivot[0], -sp.shieldPivot[1]); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1;
+  x.globalAlpha = 0.5; for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) x.drawImage(sp.rim, cx - 9 * s + dx * 5, cy - 9 * s - 20 + bob + dy * 5, 18 * s, 18 * s); x.globalAlpha = 1;
+  x.drawImage(sp.body, cx - 9 * s, cy - 9 * s - 20 + bob, 18 * s, 18 * s);
+  x.setTransform(Math.cos(th) * s, Math.sin(th) * s, -Math.sin(th) * s, Math.cos(th) * s, hx, hy); x.drawImage(sp.weapon, -sp.pivot[0], -sp.pivot[1]); x.setTransform(1, 0, 0, 1, 0, 0);
+  x.drawImage(SPR5.fist, hx - 2.5 * s, hy - 2.5 * s, 5 * s, 5 * s);
+}

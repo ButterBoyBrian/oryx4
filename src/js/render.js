@@ -167,7 +167,7 @@ function shake(T) {
   let ax = 0, ay = 0;
   for (let i = S.fx.length - 1; i >= 0; i--) {
     const e = S.fx[i], d = T - e.T; if (d < 0) continue; if (d > 2.5) break;
-    const A = e.type === 'land' ? 16 : e.type === 'chime' ? 9 : e.type === 'final' ? 22 : e.type === 'boom' ? 8 * (e.s || 1) : e.type === 'explode' ? 26 : e.type === 'starHit' && e.big ? 7 : e.type === 'resume' ? 12 : e.type === 'transform' ? 14 : 0;
+    const A = e.type === 'morph' ? (e.big ? 9 : 4) : e.type === 'berserk' ? 6 : e.type === 'stasis' ? 5 : e.type === 'land' ? 16 : e.type === 'chime' ? 9 : e.type === 'final' ? 22 : e.type === 'boom' ? 8 * (e.s || 1) : e.type === 'explode' ? 26 : e.type === 'starHit' && e.big ? 7 : e.type === 'resume' ? 12 : e.type === 'transform' ? 14 : e.type === 'chase' ? 8 : e.type === 'heroDie' ? 12 : e.type === 'kneel' ? 8 : 0;
     if (!A) continue;
     const k = A * Math.exp(-d * 5);
     ax += k * Math.sin(T * 91 + i); ay += k * Math.cos(T * 77 + i * 3);
@@ -199,11 +199,10 @@ function drawGameView(T) {
   const [sx, sy] = shake(T);
   CAM = { x: lerp(RI.cx, S.cam.x, a), y: lerp(RI.cy, S.cam.y, a), z: lerp(RI.cz, S.cam.z, a), sx, sy };
   if (a === 1) Object.assign(CAM, { x: S.cam.x, y: S.cam.y, z: S.cam.z });
-  const mid = T >= TL.mn ? smooth((T - TL.mn) / 3.5) : 0;
-  drawVoid(g, T, mid);
-  drawArena(g, T, wt, mid);
+  const mid = BOSS_N === 5 ? 0 : T >= TL.mn ? smooth((T - TL.mn) / 3.5) : 0;
+  if (BOSS_N === 5) { drawVoid5(g, T); drawArena5(g, T, wt); } else { drawVoid(g, T, mid); drawArena(g, T, wt, mid); }
   drawFloorFx(g, T, wt);
-  drawSafeLanes(g, T);
+  if (BOSS_N === 5) drawFloor5(g, T, wt); else drawSafeLanes(g, T);
   drawRangeRing(g, T, wt, wf);
   drawShadows(g, T, wt);
   drawEntities(g, T, wt, wf);
@@ -363,14 +362,15 @@ function drawSafeLanes(g, T) {
 function drawFloorFx(g, T, wt) {
   // entry warnings for attacks that come from outside the arena: glowing dashes on the rim, one per bullet
   for (const q of S.tele) {
-    if (wt < q.t0 || wt > q.t1 + 0.12) continue;
+    if (wt < q.t0 || wt > q.t1 + 0.12 || !(q.kind === 'rim' || q.kind === 'sand' || q.kind === 'note')) continue;   // (Oryx V draws its other telegraphs in drawFloor5)
     const u = sat((wt - q.t0) / (q.t1 - q.t0)), a = (0.35 + 0.65 * u) * (wt > q.t1 ? 1 - (wt - q.t1) / 0.12 : 1) * (0.8 + 0.2 * Math.sin(T * 30));
-    const sand = q.kind === 'sand', len = (sand ? 0.55 : 0.7) * TILE * CAM.z;
+    const sand = q.kind === 'sand' || q.kind === 'note', len = (sand ? 0.55 : 0.7) * TILE * CAM.z, green = q.col === 'g' || q.col === 'e';
+    const rgb = q.kind === 'note' ? '255,130,210' : green ? '120,255,150' : sand ? '255,220,120' : '140,240,255', gk = q.kind === 'note' ? 'm' : green ? 'e' : sand ? 'g' : 'c';
     g.globalCompositeOperation = 'lighter';
     for (const [x, y, ang] of q.pts) {
       const [sx, sy] = w2s(x, y);
-      glowAt(g, sand ? 'g' : 'c', sx, sy, 58 * CAM.z, a * 0.9);
-      g.strokeStyle = sand ? `rgba(255,220,120,${a})` : `rgba(140,240,255,${a})`; g.lineWidth = 4 * CAM.z;
+      glowAt(g, gk, sx, sy, 58 * CAM.z, a * 0.9);
+      g.strokeStyle = `rgba(${rgb},${a})`; g.lineWidth = 4 * CAM.z;
       g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(ang) * len * (0.4 + 0.6 * u), sy + Math.sin(ang) * len * (0.4 + 0.6 * u)); g.stroke();
     }
     g.globalCompositeOperation = 'source-over';
@@ -382,8 +382,9 @@ function drawFloorFx(g, T, wt) {
     if (wt < z.ti) {
       const u = (wt - z.t0) / (z.ti - z.t0);
       g.save(); g.translate(x, y); g.scale(1, 0.7);
-      g.fillStyle = `rgba(255,210,90,${0.1 + 0.2 * u})`; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.fill();
-      g.strokeStyle = 'rgba(255,220,120,0.8)'; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.stroke();
+      const rgb = z.kind === 'bolt' ? '120,190,255' : z.kind === 'arrow' ? '255,240,200' : z.kind === 'sword' ? '255,200,120' : z.kind === 'slam' ? '255,80,80' : '255,215,100';
+      g.fillStyle = `rgba(${rgb},${0.1 + 0.2 * u})`; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.fill();
+      g.strokeStyle = `rgba(${rgb},0.8)`; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.stroke();
       g.beginPath(); g.arc(0, 0, R * u, 0, TAU); g.stroke();
       g.restore();
     }
@@ -392,7 +393,7 @@ function drawFloorFx(g, T, wt) {
     if (wt < l.t0 || wt > l.tl) continue;
     const [x, y] = w2s(l.x1, l.y1), u = (wt - l.t0) / (l.tl - l.t0), R = (l.kind === 'glass' ? 1.0 : 0.8) * TILE * CAM.z;
     g.save(); g.translate(x, y); g.scale(1, 0.7);
-    g.strokeStyle = l.kind === 'glass' ? `rgba(160,230,255,${0.4 + 0.5 * u})` : `rgba(255,70,100,${0.4 + 0.5 * u})`; g.lineWidth = 3;
+    g.strokeStyle = l.kind === 'glass' ? `rgba(160,230,255,${0.4 + 0.5 * u})` : (BOSS_N === 5 && LOB5_COL[l.kind] || 'rgba(255,70,100,') + (0.4 + 0.5 * u) + ')'; g.lineWidth = 3;
     g.beginPath(); g.arc(0, 0, R * (1.4 - 0.4 * u), 0, TAU); g.stroke();
     g.restore();
   }
@@ -401,7 +402,7 @@ function drawShadows(g, T, wt) {
   g.fillStyle = 'rgba(0,0,0,0.42)';
   const sh = (x, y, w, h) => { const [sx, sy] = w2s(x, y); g.beginPath(); g.ellipse(sx, sy, w * TILE * CAM.z / 2, h * TILE * CAM.z / 2, 0, 0, TAU); g.fill(); };
   const b = S.boss;
-  if (bossVisible(T)) { g.globalAlpha = T < TL.land ? sat((T - TL.run) / 2) * 0.8 : 1; sh(b.x, b.y + 3.3, 5.2, 1.3); g.globalAlpha = 1; }
+  if (bossVisible(T)) { g.globalAlpha = T < TL.land ? sat((T - TL.run) / 2) * 0.8 : 1; if (BOSS_N === 5) { if (b.y > -30) sh(b.x, b.y + 3.35, 5.4, 1.3); } else sh(b.x, b.y + 3.3, 5.2, 1.3); g.globalAlpha = 1; }
   const wf = S.wf;
   sh(RP.x, RP.y + 0.42, 0.8, 0.25);
 }
@@ -411,7 +412,8 @@ const bossVisible = T => T >= TL.run && T < T_KILL + 2.45;
 function drawEntities(g, T, wt, wf) {
   const list = [];
   const b = S.boss;
-  if (bossVisible(T)) list.push([b.y + 3.3, () => drawBoss(g, T, wt)]);
+  if (bossVisible(T)) list.push([b.y + 3.3, () => BOSS_N === 5 ? drawBoss5(g, T, wt) : drawBoss(g, T, wt)]);
+  if (BOSS_N === 5) entities5(list, g, T, wt);
   for (const e of S.echoes) if (T >= e.T && T < TL.tsA + 0.55 && T < e.until + 0.6) { const p = echoPos(e, T < TL.tsA ? T : TL.tsA); list.push([p.y + 1.4, () => drawEcho(g, T, e, p)]); }
   for (const z of S.sent) if (T >= z.T && T < z.deadT + 0.05) list.push([z.y + 0.8, () => drawSentinel(g, T, z)]);
   { const v = wardenVis(T); if (v > 0) for (const z of S.wardens) list.push([z.y + 0.8, () => drawWarden(g, T, z, v)]); }
@@ -426,10 +428,12 @@ function drawEntities(g, T, wt, wf) {
     const u = (wt - l.t0) / (l.tl - l.t0), x = lerp(l.x0, l.x1, u), y = lerp(l.y0, l.y1, u) - Math.sin(Math.PI * u) * 2.4;
     const [sx, sy] = w2s(x, y);
     if (l.kind === 'glass') { g.globalCompositeOperation = 'lighter'; glowAt(g, 'c', sx, sy, 70 * CAM.z, 0.5); g.globalCompositeOperation = 'source-over'; sprAt(g, SPR.icon.hourglass, sx, sy, 5 * CAM.z, wt * 9); }
+    else if (BOSS_N === 5) drawLob5(g, l, sx, sy, wt);
     else { g.globalCompositeOperation = 'lighter'; glowAt(g, 'r', sx, sy, 90 * CAM.z, 0.6); g.globalCompositeOperation = 'source-over'; sprAt(g, SPR.b.orbR, sx, sy, 9 * CAM.z * (1 + 0.08 * Math.sin(wt * 20))); }
   }
   // light pillars
   for (const z of S.pillars) {
+    if (BOSS_N === 5) { if (wt >= z.ti - 0.3 && wt <= z.ti + 0.4) drawStrike5(g, z, wt); continue; }
     if (wt < z.ti || wt > z.ti + 0.4) continue;
     const u = (wt - z.ti) / 0.4, [x, y] = w2s(z.x, z.y), w = z.r * TILE * CAM.z * 2 * (1 - u * 0.6);
     const grd = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
@@ -603,6 +607,7 @@ function drawTargets(g, T) {
   }
   for (const s of S.sent) if (T >= s.T && s.deadT === Infinity) L.push([s.x, s.y, 58, '#ff2442']);
   for (const c of S.cuckoos) if (T >= c.T + 0.8 && c.deadT === Infinity && T < T_KILL) L.push([c.x, c.y, 42, '#ff9a2a']);
+  if (BOSS_N === 5) for (const m of S.mobs) if (m.must && T >= m.T && m.deadT === Infinity && T < T_KILL) L.push([m.x, m.y, 60, '#c9a0ff']);
   for (const [wx, wy, r0, col] of L) {
     const [x, y] = w2s(wx, wy), r = (r0 + 5 * Math.sin(T * 8)) * z, a = T * 1.5;
     if (x < -20 || y < -20 || x > GW + 20 || y > GH + 20) {   // off-screen: an arrow on the edge
@@ -756,14 +761,14 @@ function drawBullets(g, T, wt) {
   // glow pass
   g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < n; i++) {
-    const b = al[i]; if (T < b.rv && !b.tg) continue;
+    const b = al[i]; if (T < b.rv && (!b.tg || b.hid)) continue;
     const x = BPX[i], y = BPY[i]; if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], ga = T < b.rv ? 0.25 + 0.15 * Math.sin(T * 14) : 1;
-    glowAt(g, k.glow, x, y, (b.k === 'orbW' ? 90 : b.k === 'sand' ? 34 : 64) * z, (b.k === 'sand' ? 0.35 : 0.5) * ga);
+    glowAt(g, k.glow, x, y, (k.gs || (b.k === 'orbW' ? 90 : b.k === 'sand' ? 34 : 64)) * z, (k.ga || (b.k === 'sand' ? 0.35 : 0.5)) * ga);
   }
   g.globalCompositeOperation = 'source-over';
   for (let i = 0; i < n; i++) {
-    const b = al[i]; if (T < b.rv && !b.tg) continue;
+    const b = al[i]; if (T < b.rv && (!b.tg || b.hid)) continue;
     const x = BPX[i], y = BPY[i]; if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], v = b.vk ? VK[b.vk] : k, alpha = T < b.rv ? 0.3 + 0.15 * Math.sin(T * 14) : 1;
     let rot = 0;
@@ -877,6 +882,7 @@ function drawBubble(g, T) {
   let last = null;
   for (const c of CHAT) if (c[1] === 'boss' && c[0] <= T && T - c[0] < 3.4) last = c;
   if (!last || !bossVisible(T) && T < T_KILL) return;
+  if (BOSS_N === 5 && banner5(T)) return;   // Oryx V: his class banner has the top of the screen (the line is still in the chat)
   const b = S.boss, [x, y0] = w2s(b.x, b.y - b.z - 5.4);
   const a = sat((T - last[0]) / 0.15) * (T - last[0] > 3.0 ? 1 - (T - last[0] - 3.0) / 0.4 : 1);
   g.globalAlpha = a;
@@ -945,6 +951,7 @@ function postFx(g, T, wt) {
       g.filter = 'grayscale(1)'; g.drawImage(TMP, 0, 0); g.filter = 'none'; g.restore();
     }
   }
+  if (BOSS_N === 5) postFx5(g, T, wt);
   // flashes
   const fl = (type, dur, col) => { const e = fxSince(type, T, dur); if (e) { g.fillStyle = col.replace('A', String(1 - (T - e.T) / dur)); g.fillRect(0, 0, GW, GH); } };
   fl('final', 0.5, 'rgba(255,255,255,A)'); fl('land', 0.35, 'rgba(255,220,200,A)'); fl('explode', 0.8, 'rgba(255,245,220,A)'); fl('transform', 0.5, 'rgba(255,80,110,A)');
@@ -972,7 +979,7 @@ function postFx(g, T, wt) {
 // ---------- HUD inside the game view ----------
 function drawGameHud(g, T, wt, wf) {
   drawNameplate(g, T, wf);
-  if (T >= TL.run + 0.4 && T < T_KILL + 3.0) drawBossBar(g, T, wt, wf);
+  if (T >= TL.run + 0.4 && T < T_KILL + 3.0) (BOSS_N === 5 ? drawBossBar5 : drawBossBar)(g, T, wt, wf);
   drawSurvivalHud(g, T);
   if (T >= TL.p4 - 0.5 && T < T_KILL + 3.0) {
     const c = T >= TL.m12 ? 12 : Math.max(0, Math.min(11, Math.floor((T - TL.p4) / CHIME_DT))), last = c === 12 ? TL.m12 : c ? CHIME(c) : -9, fl = Math.max(0, 1 - (T - last) / 0.6);
@@ -1088,12 +1095,13 @@ function drawSidebar(x, T) {
   // minimap
   x.save(); x.beginPath(); x.rect(X + 10, 10, 340, 300); x.clip();
   if (inFight) {
-    x.imageSmoothingEnabled = true; x.drawImage(MINI, X + 30, 10, 300, 300); x.imageSmoothingEnabled = false;
+    x.imageSmoothingEnabled = true; x.drawImage(BOSS_N === 5 ? MINI5 : MINI, X + 30, 10, 300, 300); x.imageSmoothingEnabled = false;
     const m = (wx, wy) => [X + 180 + wx / (FLOOR.width / 8) * 300, 160 + wy / (FLOOR.height / 8) * 300];
     const b = S.boss;
     if (bossVisible(T)) { const [bx, by] = m(b.x, b.y); x.fillStyle = '#ff2442'; x.fillRect(bx - 7, by - 7, 14, 14); }
     for (const e of S.echoes) if (T >= e.T && T < TL.tsA + 0.5 && T < e.until) { const p = echoPos(e, Math.min(T, TL.tsA)); const [ex, ey] = m(p.x, p.y); x.fillStyle = '#ff6477'; x.fillRect(ex - 5, ey - 5, 10, 10); }
     for (const z of S.sent) if (T >= z.T && T < z.deadT) { const [ex, ey] = m(z.x, z.y); x.fillStyle = '#ff2442'; x.fillRect(ex - 4, ey - 4, 8, 8); }
+    if (BOSS_N === 5) { for (const h of S.heroes) if (T >= h.rise && T < h.deadT) { const [ex, ey] = m(h.x, h.y); x.fillStyle = h.cloak > T ? 'rgba(255,36,66,0.3)' : '#ff2442'; x.fillRect(ex - 6, ey - 6, 12, 12); } for (const z of S.mobs) if (z.must && T >= z.T && T < z.deadT) { const [ex, ey] = m(z.x, z.y); x.fillStyle = '#c9a0ff'; x.fillRect(ex - 5, ey - 5, 10, 10); } for (const d of S.decoys) if (T >= d.T && T < d.until) { const [ex, ey] = m(d.x, d.y); x.fillStyle = '#ff2442'; x.fillRect(ex - 7, ey - 7, 14, 14); } }
     if (S.bag && T >= S.bag.T) { const [ex, ey] = m(S.bag.x, S.bag.y); x.fillStyle = '#ffffff'; x.fillRect(ex - 5, ey - 5, 10, 10); }
     const [px, py] = m(S.hx[S.wf], S.hy[S.wf]);
     x.fillStyle = '#fff'; x.beginPath(); x.moveTo(px, py - 8); x.lineTo(px + 6, py + 6); x.lineTo(px - 6, py + 6); x.closePath(); x.fill();
@@ -1104,7 +1112,7 @@ function drawSidebar(x, T) {
   }
   x.restore();
   x.strokeStyle = '#3a3346'; x.lineWidth = 2; x.strokeRect(X + 10, 10, 340, 300);
-  txt(x, inFight ? 'Oryx’s Chronosanctum (1/85)' : 'Chronosanctum Antechamber', X + 180, 328, 19, '#9c95ab', { sw: 0 });
+  txt(x, inFight ? (BOSS_N === 5 ? 'Oryx’s Hall of Heroes (1/85)' : 'Oryx’s Chronosanctum (1/85)') : 'Chronosanctum Antechamber', X + 180, 328, 19, '#9c95ab', { sw: 0 });
   // bars
   const wf = inFight ? S.wf : 0;
   const hp = inFight ? S.hhp[wf] : P_MAXHP, mp = inFight ? S.hmp[wf] : P_MAXMP;
@@ -1148,13 +1156,13 @@ function drawSidebar(x, T) {
 function gearFocus(T) { if (T < 15.4 || T >= 22.4) return -1; return Math.floor((T - 15.4) / 1.75); }
 
 // ---------- LiveSplit-style panel ----------
-const practiceName = p => p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
+const practiceName = p => BOSS_N === 5 ? WEAPONS5[p - 1].toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
 function drawSplits(x, T) {
   const X = GW + 10, Y = 786, w = 340;
   x.fillStyle = '#0a0a0e'; x.fillRect(X, Y, w, H - Y - 8);
   x.fillStyle = '#16161e'; x.fillRect(X, Y, w, 40);
   const rta = T >= TL.rwA && T < TL.rwB + 1.8;
-  txt(x, rta ? 'RTA doesn’t rewind.' : S && S.practice ? 'Practice — ' + practiceName(S.practice) : 'Oryx IV — ' + DIFFS[S ? S.diff : CUR_DIFF].name, X + 12, Y + 20, 20, rta ? '#9ff4ff' : S && S.practice ? '#ffb85a' : '#e8e8f0', { a: 'left', f: 'Chakra', sw: 0 });
+  txt(x, rta ? 'RTA doesn’t rewind.' : S && S.practice ? 'Practice — ' + practiceName(S.practice) : 'Oryx ' + (BOSS_N === 5 ? 'V' : 'IV') + ' — ' + DIFFS[S ? S.diff : CUR_DIFF].name, X + 12, Y + 20, 20, rta ? '#9ff4ff' : S && S.practice ? '#ffb85a' : '#e8e8f0', { a: 'left', f: 'Chakra', sw: 0 });
   txt(x, '#' + (G.attempts || 1), X + w - 12, Y + 20, 18, '#8a8aa0', { a: 'right', f: 'Chakra', sw: 0 });
   const R = Math.max(0, Math.min(T, T_KILL, S && S.dead ? S.dead : Infinity) - T_RUN), running = T >= T_RUN;
   let cur = SPLITS.findIndex(s => T < s.T);
@@ -1193,7 +1201,8 @@ function drawOverlays(x, T) {
     }
   }
   if (T >= TL.lobby && T < TL.run) drawLobbyOverlay(x, T);
-  for (const ph of PHASES) {
+  if (BOSS_N === 5) drawOverlays5(x, T);
+  else for (const ph of PHASES) {
     const t = TL[ph.key] + (ph.num === 'I' ? 0.6 : 0.1), u = T - t;
     if (u < 0 || u > 2.6) continue;
     const a = u < 0.25 ? u / 0.25 : u > 2.1 ? 1 - (u - 2.1) / 0.5 : 1;
@@ -1224,7 +1233,7 @@ function drawOverlays(x, T) {
     x.globalAlpha = 1;
   }
   // kill
-  if (T >= T_KILL && T < T_KILL + 5.5) {
+  if (BOSS_N === 4 && T >= T_KILL && T < T_KILL + 5.5) {
     const u = T - T_KILL - 0.55, a = u < 0 ? 0 : u > 4.3 ? 1 - (u - 4.3) / 0.65 : 1;
     if (a > 0) {
       x.globalAlpha = a;
@@ -1333,11 +1342,11 @@ function drawLoot(x, T) {
     const sx = X + 16 + i * 84, sy = Y + 44;
     x.fillStyle = '#1c1924'; x.fillRect(sx, sy, 78, 78); x.strokeStyle = '#2f2a3a'; x.strokeRect(sx + 1, sy + 1, 76, 76);
   }
-  const ic = SPR.icon.hourglass; x.drawImage(ic, X + 55 - ic.width * 3, Y + 83 - ic.height * 3, ic.width * 6, ic.height * 6);
+  const ic = BOSS_N === 5 ? SPR5.soulGem : SPR.icon.hourglass; x.drawImage(ic, X + 55 - ic.width * 3, Y + 83 - ic.height * 3, ic.width * 6, ic.height * 6);
   x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.globalAlpha = Math.max(0, a) * (0.6 + 0.4 * Math.sin(T * 6)); x.strokeRect(X + 17, Y + 45, 76, 76);
   x.globalAlpha = Math.max(0, a);
   const ic2 = SPR.icon.hpPot; x.drawImage(ic2, X + 139 - ic2.width * 3, Y + 83 - ic2.height * 3, ic2.width * 6, ic2.height * 6);
-  if (u > 0.9) tooltip(x, 1030, 470, 520, 'Hourglass of the Unwound', '#ffffff', 'Untiered Ability · white bag', [['On use: rewind yourself 3 seconds'], ['✦ Bound to the one who skipped Midnight', '#d9a8ff'], ['“He won’t be needing it.”', '#8a8a98']], Math.max(0, a) * Math.min(1, (u - 0.9) / 0.2));
+  if (u > 0.9) { const tip = BOSS_N === 5 ? ['Soul of the Usurper', '#ffffff', 'Untiered Ability · white bag', [['On use: become the last hero you saw fall'], ['✦ Bound to the one who outlasted every hero', '#d9a8ff'], ['“He wore ten thousand faces. None were his.”', '#8a8a98']]] : ['Hourglass of the Unwound', '#ffffff', 'Untiered Ability · white bag', [['On use: rewind yourself 3 seconds'], ['✦ Bound to the one who skipped Midnight', '#d9a8ff'], ['“He won’t be needing it.”', '#8a8a98']]]; tooltip(x, 1030, 470, 520, ...tip, Math.max(0, a) * Math.min(1, (u - 0.9) / 0.2)); }
   x.globalAlpha = 1;
 }
 function drawResults(x, T) {
@@ -1346,7 +1355,7 @@ function drawResults(x, T) {
   const X = 250, Y = 170, w = 1060;
   panel(x, X, Y, w, 700, { bg: 'rgba(12,8,18,0.96)', bd: '#d1a12a', lw: 3 });
   txt(x, S.practice ? 'PRACTICE CLEAR' : 'RUN COMPLETE', X + w / 2, Y + 60, 40, '#ffe07a', { f: 'P2P', sw: 6, w: 400 });
-  txt(x, S.practice ? 'Practice from ' + practiceName(S.practice) + ' — times not saved' : 'Oryx the Mad God IV · Solo · ' + DIFFS[S.diff].name, X + w / 2, Y + 112, 26, '#c9b8d8', { sw: 0 });
+  txt(x, S.practice ? 'Practice from ' + practiceName(S.practice) + ' — times not saved' : BOSS + ' · Solo · ' + DIFFS[S.diff].name, X + w / 2, Y + 112, 26, '#c9b8d8', { sw: 0 });
   const R = T_KILL - T_RUN;
   const grd = x.createLinearGradient(0, Y + 150, 0, Y + 260); grd.addColorStop(0, '#fff3a0'); grd.addColorStop(1, '#e0a020');
   x.font = '700 120px Chakra'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = grd; x.fillText(fmtTime(R, 2), X + w / 2, Y + 210);
@@ -1355,12 +1364,12 @@ function drawResults(x, T) {
     const y = Y + 334 + i * 38, st = s.T - T_RUN, d = s.pb != null ? st - s.pb : null, v = u > 0.6 + i * 0.25;
     if (!v || !isFinite(s.T) || s.T <= 0) return;
     x.fillStyle = i % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)'; x.fillRect(X + 120, y - 18, w - 240, 36);
-    txt(x, (i + 1) + '. ' + s.name + (i === 1 ? '  (rewound −10s)' : i === 5 ? '  (outlasted him)' : ''), X + 150, y, 26, '#ffffff', { a: 'left', sw: 0 });
+    txt(x, (i + 1) + '. ' + s.name + (BOSS_N === 5 ? '' : i === 1 ? '  (rewound −10s)' : i === 5 ? '  (outlasted him)' : ''), X + 150, y, 26, '#ffffff', { a: 'left', sw: 0 });
     if (d != null) txt(x, (d < 0 ? '−' : '+') + Math.abs(d).toFixed(2), X + w - 330, y, 26, d < 0 ? '#29d65a' : '#e0283f', { a: 'right', f: 'Chakra', sw: 0 });
     txt(x, fmtTime(st, 2), X + w - 150, y, 28, '#ffffff', { a: 'right', f: 'Chakra', sw: 0 });
   });
   // the two skill metrics: damage taken over the run, and how fast the Final Seconds were outlasted (more damage on the Heart = shorter)
-  if (u > 2.0) txt(x, 'Damage taken ' + fmtInt(S.p.dmgTaken) + '     ·     Final Seconds ' + (T_KILL - TL.svB).toFixed(2) + ' s', X + w / 2, Y + 584, 30, '#ffd23f', { sw: 4 });
+  if (u > 2.0) txt(x, 'Damage taken ' + fmtInt(S.p.dmgTaken) + '     ·     ' + (BOSS_N === 5 ? 'Last Stand ' + (T_KILL - S.f5.T).toFixed(2) : 'Final Seconds ' + (T_KILL - TL.svB).toFixed(2)) + ' s', X + w / 2, Y + 584, 30, '#ffd23f', { sw: 4 });
   if (u > 2.6) txt(x, 'Hits taken ' + S.p.hits + ' · HP pots ' + (TUNE.pots - S.p.pots) + '/' + TUNE.pots + ' · MP pots ' + (TUNE.mpots - S.p.mpots) + '/' + TUNE.mpots, X + w / 2, Y + 630, 24, '#ffffff', { sw: 0 });
   if (u > 1.2) txt(x, 'R — run it back      ENTER — title', X + w / 2, Y + 668, 20, Math.floor(T * 2) % 2 ? '#ffe07a' : '#c9b8d8', { f: 'SilkB', sw: 0, w: 400 });
   x.globalAlpha = 1;

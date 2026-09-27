@@ -48,7 +48,7 @@ const DIFFS = {
 };
 const DIFF_ORDER = ['easy', 'hard', 'diabolical'];
 let CUR_DIFF = 'hard';
-function setDifficulty(d) { const D = DIFFS[d]; CUR_DIFF = d; P_MAXHP = D.hp; Object.assign(TUNE, { regen: D.regen, pots: D.pots, mpots: D.mpots }); }
+function setDifficulty(d) { const D = typeof diffOf === 'function' ? diffOf(d) : DIFFS[d]; CUR_DIFF = d; P_MAXHP = D.hp; Object.assign(TUNE, { regen: D.regen, pots: D.pots, mpots: D.mpots }); }
 const NEG = -1e9;
 
 function newInput() { return { up: 0, down: 0, left: 0, right: 0, ax: 0, ay: -5, fire: 0, auto: 1, ability: 0, hpPot: 0, mpPot: 0 }; }
@@ -56,7 +56,8 @@ function startGame(practice = 0, seed = (Date.now() & 0x7fffffff)) {
   resetTL(); CHAT.length = 0;
   for (const s of SPLITS) s.T = Infinity;
   TL.run = 0; TL.land = 2;
-  if (practice <= 1) TL.p1 = TL.land;
+  if (BOSS_N === 5) { }   // Oryx V keeps its own form timeline (initS5)
+  else if (practice <= 1) TL.p1 = TL.land;
   else {
     TL.p1 = NEG; TL.rw = TL.rwA = TL.rwB = NEG;
     if (practice === 2) TL.p2 = TL.land;
@@ -68,7 +69,7 @@ function startGame(practice = 0, seed = (Date.now() & 0x7fffffff)) {
       else { TL.p3 = NEG; TL.sent = NEG; TL.mn = TL.land - 12; TL.p4 = NEG; TL.m12 = TL.land - 8; TL.p5 = TL.land - 4; TL.sv = TL.land - 3.5; TL.svB = TL.land; }
     }
   }
-  const base = [0, 0, 0.123, 0.359, 0.615, 0.808, 1][practice] * MAXHP;   // phase II starts above its threshold: the rewind undoes ~270k
+  const base = BOSS_N === 5 ? practiceBase5(practice) : [0, 0, 0.123, 0.359, 0.615, 0.808, 1][practice] * MAXHP;   // phase II starts above its threshold: the rewind undoes ~270k
   S = {
     f: 0, T: 0, wt: 0, off: 0, wf: 0, rate: 1, needTrunc: false, practice, seed, diff: CUR_DIFF,
     rng: mulberry32(seed), input: newInput(), gapBase: (seed % 12) / 12,
@@ -85,6 +86,7 @@ function startGame(practice = 0, seed = (Date.now() & 0x7fffffff)) {
     blink: null, killPos: null, bag: null, botPad: 0, dead: 0, deathCause: '', cleared: false,
   };
   S.cum.fill(base, 0, 2);
+  if (BOSS_N === 5) initS5(practice);
   return S;
 }
 
@@ -95,8 +97,9 @@ function worldRate(T) {
   if (T >= T_KILL && T < T_KILL + 0.35) return 0;
   return 1;
 }
-function phaseOf(T) { return T < TL.rw ? 0 : T < TL.ts ? 1 : T < TL.mn ? 2 : T < TL.m12 ? 3 : 4; }
+function phaseOf(T) { if (BOSS_N === 5) return formOf5(T); return T < TL.rw ? 0 : T < TL.ts ? 1 : T < TL.mn ? 2 : T < TL.m12 ? 3 : 4; }
 function bossVulnerable(T) {
+  if (BOSS_N === 5) return vuln5(T);
   if (T < TL.land || T >= T_KILL) return false;
   if (T >= TL.rw && T < TL.p2) return false;
   if (T >= TL.ts && T < TL.p3) return false;
@@ -114,13 +117,15 @@ function bpos(b, wt) {
   if (b.hm) { const d = Math.max(0, wt - b.hwt); BX = b.hx + Math.cos(b.ang) * b.spd * d; BY = b.hy + Math.sin(b.ang) * b.spd * d; BTH = b.ang; return wt - b.t0; }
   let tau = wt - b.t0 - b.dl; if (tau < 0) tau = 0;
   if (b.st) { const t1 = b.t0 + b.dl; tau = stutG(t1 + tau, b.so) - stutG(t1, b.so); }
+  if (tau > b.stop) tau = b.stop;
   const r = b.r0 + b.vr * tau + 0.5 * b.ar * tau * tau, th = b.th + b.w * tau + (b.osc ? b.osc * Math.sin(b.of * tau + b.op) : 0);
   BX = b.cx + r * Math.cos(th); BY = b.cy + r * Math.sin(th); BTH = th;
+  if (b.wa) { const q = b.wa * Math.sin(b.wf * tau + b.wp); BX -= Math.sin(th) * q; BY += Math.cos(th) * q; }
   return tau;
 }
 function bhead(b, wt) {
   if (b.hm) return b.ang;
-  let tau = wt - b.t0 - b.dl; if (tau < 0) tau = 0;
+  let tau = wt - b.t0 - b.dl; if (tau < 0) tau = 0; if (tau > b.stop) tau = b.stop;
   const r = b.r0 + b.vr * tau + 0.5 * b.ar * tau * tau, th = b.th + b.w * tau, dr = b.vr + b.ar * tau;
   const c = Math.cos(th), s = Math.sin(th), vx = dr * c - r * b.w * s, vy = dr * s + r * b.w * c;
   return (Math.abs(vx) + Math.abs(vy) < 1e-6) ? th + (b.vr < 0 ? Math.PI : 0) : Math.atan2(vy, vx);
@@ -131,7 +136,7 @@ function emitB(te, o) {
   const dm = CUR_T >= TL.p3 && CUR_T < TL.mn ? TUNE.p3dmg : 1;
   const k = BK[o.k], v = o.raw ? 1 : TUNE.speed * (o.sweep ? TUNE.sweep : 1) * (CUR_T >= TL.p4 && CUR_T < TL.m12 ? TUNE.p4speed : 1);
   const b = { t0: o.t0 !== undefined ? o.t0 : wtAt(te), dl: o.dl || 0, cx: o.cx, cy: o.cy, r0: o.r0 || 0, vr: (o.vr || 0) * v, ar: (o.ar || 0) * v * v, th: o.th, w: (o.w || 0) * v,
-    life: (o.life || 5) / v, arm: o.cont ? 0 : Math.max(o.arm || 0, 0.2), T0: CUR_T, rad: k.r, k: o.k, dmg: (o.dmg || k.dmg) * TUNE.bulletMul * dm, hit: Infinity, st: o.st || 0, so: S.off - (o.stBase || 0), rv: o.rv || 0, tg: o.tg || 0, sweep: o.sweep || 0, osc: o.osc || 0, of: o.of || 0, op: o.op || 0, src: o.src || 0, rg: o.rg || 0, vk: o.vk || 0 };
+    life: (o.life || 5) / v, arm: o.cont ? 0 : Math.max(o.arm || 0, 0.2), T0: o.T0 ?? CUR_T, rad: k.r, stop: o.stop ? o.stop / v : Infinity, wa: o.wa || 0, wf: (o.wf || 0) * v, wp: o.wp || 0, hid: o.hid || 0, k: o.k, dmg: (o.dmg || k.dmg) * TUNE.bulletMul * dm, hit: Infinity, st: o.st || 0, so: S.off - (o.stBase || 0), rv: o.rv || 0, tg: o.tg || 0, sweep: o.sweep || 0, osc: o.osc || 0, of: o.of || 0, op: o.op || 0, src: o.src || 0, rg: o.rg || 0, vk: o.vk || 0 };
   S.bb.push(b);
   return b;
 }
@@ -166,6 +171,7 @@ function cyc(T0, T1, start, end, len, fn) {
 
 // ---------- boss motion ----------
 function bossAt(T, wt) {
+  if (BOSS_N === 5) return bossAt5(T, wt);
   const o = { x: HOME.x, y: HOME.y, z: 0, form: T >= TL.mn + 2 ? 1 : 0 };
   if (T < TL.land) { o.z = 6.5 * Math.pow(1 - sat((T - TL.run) / (TL.land - TL.run)), 2); return o; }
   if (T >= T_KILL && S.killPos) return Object.assign(o, S.killPos);
@@ -618,7 +624,7 @@ function minionAI(T0, T1) {
 const WP_R = 1.2, WP_ORB = 1.7;
 // steady orbit (0.24-0.87 rad/s, never reverses), a little quicker at midnight
 function wpAngle(T, wt) { return 0.55 * wt + 0.7 * Math.sin(0.45 * wt) + (T >= TL.p4 ? 0.25 * (T - TL.p4) : 0); }
-function wpPos(T, wt, b) { const a = wpAngle(T, wt); return { x: b.x + WP_ORB * Math.cos(a), y: b.y - b.z + 0.8 * WP_ORB * Math.sin(a) }; }
+function wpPos(T, wt, b) { if (BOSS_N === 5) return wpPos5(T, wt, b); const a = wpAngle(T, wt); return { x: b.x + WP_ORB * Math.cos(a), y: b.y - b.z + 0.8 * WP_ORB * Math.sin(a) }; }
 // where the weak point will be when a projectile fired now from (x0, y0) reaches it
 function wpLead(T, wt, x0, y0, spd) {
   let w = wpPos(T, wt, S.boss);
@@ -633,14 +639,15 @@ function playerMove(T, wt) {
   const n = Math.hypot(dx, dy); if (n) { dx /= n; dy /= n; }
   p.vx = dx * P_SPEED; p.vy = dy * P_SPEED;
   p.x += p.vx / FPS; p.y += p.vy / FPS;
-  const r = Math.hypot(p.x, p.y); if (r > 12.1) { p.x *= 12.1 / r; p.y *= 12.1 / r; }
+  if (BOSS_N === 5) { [p.x, p.y] = intoA5(p.x, p.y, 0.5); solid5(p, T); } else { const r = Math.hypot(p.x, p.y); if (r > 12.1) { p.x *= 12.1 / r; p.y *= 12.1 / r; } }   // Oryx V's hall changes shape and has obstacles
   // his body is solid: no hiding inside the ring where his patterns spawn (except while he blinks around you in the time stop)
-  const b = S.boss, bx = p.x - b.x, by = p.y - b.y, br = Math.hypot(bx, by);
-  if (T >= TL.land && T < T_KILL && !(T >= TL.tsA && T < TL.tsB) && br < BODY_R) { const u = br > 1e-6 ? BODY_R / br : 0; p.x = b.x + (u ? bx * u : 0); p.y = b.y + (u ? by * u : BODY_R); }
+  const b = S.boss, bx = p.x - b.x, by = p.y - b.y, br = Math.hypot(bx, by), BR = S.bodyR || BODY_R;
+  if (T >= TL.land && T < T_KILL && !(T >= TL.tsA && T < TL.tsB) && !(BOSS_N === 5 && moving5(T)) && br < BR) { const u = br > 1e-6 ? BR / br : 0; p.x = b.x + (u ? bx * u : 0); p.y = b.y + (u ? by * u : BR); }
 }
 function targets(T) {
   const L = [];
-  if (T >= TL.land && T < T_KILL) { const b = S.boss; L.push({ x: b.x, y: b.y - b.z, r: BOSS_R, body: true }); }
+  if (T >= TL.land && T < T_KILL && (BOSS_N !== 5 || knight5())) { const b = S.boss; L.push({ x: b.x, y: b.y - b.z, r: S.bossR || BOSS_R, body: true }); }
+  if (BOSS_N === 5) targets5(T, L);
   for (const z of S.sent) if (z.deadT === Infinity && T >= z.T + 0.4) L.push({ x: z.x, y: z.y, r: 0.75, sent: z });
   for (const c of S.cuckoos) if (c.deadT === Infinity && T >= c.T + 0.8) L.push({ x: c.x, y: c.y, r: 0.7, sent: c, cuck: true });
   return L;
@@ -653,7 +660,7 @@ function rayCircle(x0, y0, dx, dy, cx0, cy0, r) {
 function fireP(kind, T, wt, ang, dmgFn) {
   const p = S.p, pk = PK[kind], x0 = p.x, y0 = p.y - 0.25, dx = Math.cos(ang), dy = Math.sin(ang);
   let best = null, bestS = pk.range;
-  if (T >= TL.land && T < T_KILL) {
+  if (T >= TL.land && T < T_KILL && (BOSS_N !== 5 || knight5())) {   // (Oryx V's parties have no weak point)
     const w = wpLead(T, wt, x0, y0, pk.spd), s = rayCircle(x0, y0, dx, dy, w.x, w.y, WP_R);
     if (s < pk.range) { best = { wp: true, x: w.x, y: w.y }; bestS = s; }
   }
@@ -682,6 +689,7 @@ function playerAttack(T, wt) {
 
 // ---------- phase transitions (HP driven) ----------
 function trigger(T) {
+  if (BOSS_N === 5) return trigger5(T);
   const ph = phaseOf(T);
   if (S.trig[ph]) return; S.trig[ph] = true;
   S.ev.push({ T, type: 'split' });
@@ -696,6 +704,7 @@ function resolveHits(T, wt, wf) {
   const prev = wf > 0 ? S.cum[wf - 1] : S.cumBase, keep = [];
   for (const h of S.pend) {
     if (h.t > wt + 1e-6) { keep.push(h); continue; }
+    if (BOSS_N === 5) { const d5 = hit5(h, T); if (d5 !== null) { dmgNow += d5; continue; } }   // Oryx V: his heroes, and the survival clocks
     if (h.tg.sent) {
       const z = h.tg.sent; if (z.deadT !== Infinity) continue;
       z.dmg += h.dmg; S.hits.push({ wt: h.t, x: h.x, y: h.y, dmg: h.dmg, crit: h.crit, kind: h.kind });
@@ -704,7 +713,7 @@ function resolveHits(T, wt, wf) {
       if (z.dmg >= z.hp) {
         z.deadT = T; S.ev.push({ T, type: 'sentDie' }); S.fx.push({ T, type: 'boom', x: z.x, y: z.y, s: 1 });
         S.parts.push({ t: wt, x: z.x, y: z.y, n: 26, seed: S.parts.length * 7 + 3, col: 'gear', spd: 5, life: 1.2 });
-        if (!h.tg.cuck && S.sent.every(q => q.deadT !== Infinity)) { S.shieldT = T; S.ev.push({ T, type: 'shield' }); S.fx.push({ T, type: 'shield' }); }
+        if (!h.tg.cuck && !h.tg.mob && S.sent.every(q => q.deadT !== Infinity)) { S.shieldT = T; S.ev.push({ T, type: 'shield' }); S.fx.push({ T, type: 'shield' }); }
       }
       S.ev.push({ T, type: h.kind === 'slash' ? 'hit' : 'starHit' });
       continue;
@@ -753,14 +762,16 @@ function killPlayer(T, cause) {
 function collide(T, wt) {
   const p = S.p;
   if (T >= T_KILL || S.dead) return;
-  if (T - (p.lastHitT ?? -9) < 0.1) return;   // brief immunity so overlapping bullets can't stack in one instant
-  for (let i = 0; i < S.al.length; i++) {
+  let hit = T - (p.lastHitT ?? -9) < 0.1;   // brief immunity so overlapping bullets can't stack in one instant
+  if (!hit) for (let i = 0; i < S.al.length; i++) {
     const b = S.al[i]; if (T < b.rv || b.hit !== Infinity || wt < b.t0 + b.arm) continue;
     const dx = S.alx[i] - p.x, dy = S.aly[i] - p.y, rr = b.rad + P_R + S.botPad;
-    if (dx * dx + dy * dy < rr * rr) { b.hit = wt; if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: b.k, age: T - Math.max(b.T0 + b.dl, b.rv || 0), sweep: b.sweep }); hurt(T, wt, b.dmg); return; }   // one hit per instant, then the brief immunity
+    if (dx * dx + dy * dy < rr * rr) { b.hit = wt; if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: b.k, age: T - Math.max(b.T0 + b.dl, b.rv || 0), sweep: b.sweep }); hurt(T, wt, b.dmg); hit = true; break; }   // one hit per instant, then the brief immunity
   }
-  for (const l of S.lobs) if (!l.done && wt >= l.tl) { l.done = true; if (Math.hypot(p.x - l.x1, p.y - l.y1) < (l.kind === 'glass' ? 0.9 : 0.7) + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'bomb:' + l.kind, age: wt - l.t0 }); hurt(T, wt, 150 * TUNE.bulletMul); if (S.dead) return; } }
-  for (const z of S.pillars) if (!z.done && wt >= z.ti) { z.done = true; if (Math.hypot(p.x - z.x, p.y - z.y) < z.r + P_R + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'pillar', age: wt - z.t0 }); hurt(T, wt, 180 * TUNE.bulletMul); if (S.dead) return; } }
+  // bombs and strikes land at their instant (even while you are immune) and, like bullets, hurt at most once per instant
+  for (const l of S.lobs) if (!l.done && wt >= l.tl) { l.done = true; if (!hit && Math.hypot(p.x - l.x1, p.y - l.y1) < (l.r ?? (l.kind === 'glass' ? 0.9 : 0.7)) + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'bomb:' + l.kind, age: wt - l.t0 }); hurt(T, wt, (l.dmg || 150) * TUNE.bulletMul); hit = true; } }
+  for (const z of S.pillars) if (!z.done && wt >= z.ti) { z.done = true; if (!hit && Math.hypot(p.x - z.x, p.y - z.y) < z.r + P_R + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'pillar' + (z.kind ? ':' + z.kind : ''), age: wt - z.t0 }); hurt(T, wt, (z.dmg || 180) * TUNE.bulletMul); hit = true; } }
+  if (BOSS_N === 5) collide5(T, wt, hit);   // Oryx V: strikes on whole quarters of the hall
 }
 function regen() {
   const p = S.p;
@@ -801,6 +812,7 @@ function timeStop(T) {
 
 // ---------- fixed one-shot events and boss lines ----------
 function scriptEvents(T0, T1) {
+  if (BOSS_N === 5) return scriptEvents5(T0, T1);
   const at = t => T0 < t && T1 >= t;
   const b = S.boss, wt = S.wt;
   if (at(TL.run)) { S.ev.push({ T: TL.run, type: 'portal' }); say(TL.run + 0.7, 'boss', 'Three times you have ended me, mortal. Three times I have watched.'); }
@@ -881,6 +893,7 @@ function record(wf) {
   S.hdir[wf] = p.dir; S.hface[wf] = p.face; S.hwalk[wf] = mv > 0.5 ? p.walk : -1; S.hatk[wf] = p.atkT;
 }
 function updateCam(T) {
+  if (BOSS_N === 5) return updateCam5(T);
   const c = S.cam, wf = S.wf, px = S.hx[wf], py = S.hy[wf], b = S.boss;
   // frame the player and all of Oryx together: centre the pair's bounding box in the view below the top HUD row.
   // At the arena edge his crown just tucks under the boss bar; closer in, the same zoom leaves room to spare.
@@ -919,7 +932,7 @@ function step() {
     if (S.needTrunc) truncateAfter(wt);
     S.boss = bossAt(T, wt);
     if (T >= T_KILL && !S.killPos) S.killPos = { x: S.boss.x, y: S.boss.y, z: S.boss.z };
-    if (T < T_KILL && !S.dead) { bossAI(Tp, T); minionAI(Tp, T); }
+    if (T < T_KILL && !S.dead) { if (BOSS_N === 5) ai5(Tp, T); else { bossAI(Tp, T); minionAI(Tp, T); } }
     updateHoming(wt);
     refreshAlive(wt);
     if (!S.dead) { playerMove(T, wt); playerAttack(T, wt); }

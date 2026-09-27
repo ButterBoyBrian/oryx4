@@ -5,11 +5,11 @@ const GW = 1560, GH = 1080;              // game viewport; sidebar is x >= GW
 const BEAT = 0.5, BAR = 2.0;             // 120 BPM
 const TILE = 72, TEX = 9;
 const ARENA_R = 12.6;
-const MAXHP = 1870000;
+let MAXHP = 1870000;                     // the chosen boss's (selectBoss in game5.js)
 let P_MAXHP = 1250;                      // set by the chosen difficulty
 const P_MAXMP = 612;
 const HN = FPS * 60 * 20;                // history capacity: 20 minutes
-const PHASE_FLOOR = [0.785, 0.641, 0.385, 0.192, 0];   // phases I-II are short; III-V keep 480k / 360k / 360k HP
+let PHASE_FLOOR = [0.785, 0.641, 0.385, 0.192, 0];   // phases I-II are short; III-V keep 480k / 360k / 360k HP
 const CHIME_DT = 2.5;                    // seconds between bells in the eleventh hour; the 12th forces midnight
 
 // ---------- timeline ----------
@@ -25,10 +25,11 @@ function useVideoTL() { resetTL(); Object.assign(TL, VIDEO_TL); T_RUN = 24; T_KI
 resetTL();
 const CHIME = k => TL.p4 + CHIME_DT * k;
 
-const SPLITS = ['Tick', 'Rewind', 'Stasis', 'Eleventh Hour', 'Midnight', 'Final Seconds'].map(name => ({ name, T: Infinity, pb: null }));
-const PHASES = [{ key: 'p1', num: 'I', name: 'TICK' }, { key: 'p2', num: 'II', name: 'REWIND' }, { key: 'p3', num: 'III', name: 'STASIS' }, { key: 'p4', num: 'IV', name: 'ELEVENTH HOUR' }, { key: 'p5', num: 'V', name: 'MIDNIGHT' }];
+let SPLITS = ['Tick', 'Rewind', 'Stasis', 'Eleventh Hour', 'Midnight', 'Final Seconds'].map(name => ({ name, T: Infinity, pb: null }));
+let PHASES = [{ key: 'p1', num: 'I', name: 'TICK' }, { key: 'p2', num: 'II', name: 'REWIND' }, { key: 'p3', num: 'III', name: 'STASIS' }, { key: 'p4', num: 'IV', name: 'ELEVENTH HOUR' }, { key: 'p5', num: 'V', name: 'MIDNIGHT' }];
 
-const BOSS = 'Oryx the Mad God IV';
+let BOSS = 'Oryx the Mad God IV';
+let BOSS_N = 4;                          // which fight: 4 = Oryx IV (the clock), 5 = Oryx V (the usurper)
 const NW = 'NoobWaf‌fle';
 const CHAT = [];
 function say(T, who, text) { CHAT.push([T, who, text]); }

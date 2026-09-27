@@ -48,6 +48,21 @@ function makeMusicBuffer() {
   b.copyToChannel(LA.musicL, 0); b.copyToChannel(LA.musicR, 1);
   LA.musicBuf = b;
 }
+// Oryx V has its own score (audio5.js), baked the same way (MUSIC5_OGG)
+async function loadMusic5() {
+  if (typeof MUSIC5_OGG === 'undefined') { await prerenderMusic5(); if (LA.ctx) makeMusicBuffer5(); return; }
+  try {
+    const bytes = Uint8Array.from(atob(MUSIC5_OGG), c => c.charCodeAt(0));
+    const buf = await new OfflineAudioContext(2, 1, SR).decodeAudioData(bytes.buffer);
+    LA.music5L = buf.getChannelData(0); LA.music5R = buf.getChannelData(1); LA.prog5 = 1;
+    if (LA.ctx) makeMusicBuffer5();
+  } catch (e) { await prerenderMusic5(); if (LA.ctx) makeMusicBuffer5(); }
+}
+function makeMusicBuffer5() {
+  const b = LA.ctx.createBuffer(2, LA.music5L.length, SR);
+  b.copyToChannel(LA.music5L, 0); b.copyToChannel(LA.music5R, 1);
+  LA.music5Buf = b;
+}
 function audioInit() {
   if (LA.ctx) { if (LA.ctx.state === 'suspended' && !G.paused) LA.ctx.resume(); return; }
   const ctx = new AudioContext({ sampleRate: SR }); LA.ctx = ctx;
@@ -65,6 +80,7 @@ function audioInit() {
   LA.bus = BUS; LA.noise = NOISE; LA.pw = PW;
   [AC, NOISE, PW, BUS] = saved;
   if (LA.musicL) makeMusicBuffer();
+  if (LA.music5L) makeMusicBuffer5();
 }
 function live(fn) {
   const saved = [AC, NOISE, PW, BUS, LIVE];
@@ -82,13 +98,14 @@ function musicStop(fade = 0.35) {
   try { c.src.stop(t + fade + 0.05); } catch (e) { }
 }
 function musicStart(key, into) {
-  if (!LA.musicBuf) return false;
+  const five = !SEG[key] && key !== 'rewind', buf = five ? LA.music5Buf : LA.musicBuf;
+  if (!buf) return false;
   const ctx = LA.ctx, g = ctx.createGain(), src = ctx.createBufferSource(), t = ctx.currentTime + 0.02;
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + 0.04); g.connect(LA.musicGain);
   if (key === 'rewind') { src.buffer = rewindBuffer(); src.connect(g); src.start(t, Math.max(0, into)); }
   else {
-    const [a, b, loop] = SEG[key], len = b - a;
-    src.buffer = LA.musicBuf; src.connect(g);
+    const [a, b, loop] = five ? SEG5[key] : SEG[key], len = b - a;
+    src.buffer = buf; src.connect(g);
     if (loop) { src.loop = true; src.loopStart = a; src.loopEnd = b; src.start(t, a + ((into % len) + len) % len); }
     else { if (into >= len) return true; src.start(t, a + Math.max(0, into), len - Math.max(0, into)); }
   }
@@ -110,6 +127,7 @@ function rewindBuffer() {
   return b;
 }
 function desiredMusic(T) {
+  if (BOSS_N === 5) return desiredMusic5(T);
   if (G.mode === 'title') return ['title', 0];
   if (!S || S.dead) return null;
   if (T >= T_KILL) return T >= T_KILL + 3 ? ['victory', T_KILL + 3] : null;
@@ -127,6 +145,18 @@ function desiredMusic(T) {
   if (T >= TL.rwA) return ['rewind', TL.rwA];
   if (T >= TL.p1) return ['p1', TL.p1];
   return null;
+}
+function desiredMusic5(T) {
+  if (G.mode === 'title') return ['title5', 0];
+  if (!S || (S.dead && T >= S.dead)) return null;
+  if (T >= T_KILL) return T >= T_KILL + 3 ? ['victory5', T_KILL + 3] : null;
+  if (T < TL.land) return ['entrance5', TL.run];
+  // the stage at T comes from the stage log, so a replay after the fight (the video recorder) hears the same music
+  const L = S.f5.log; let j = L.length - 1; while (j > 0 && T < L[j].mT) j--;
+  let k = j; while (k > 0 && FORMS5[L[k].i].tr === 'stance') k--;   // a change of stance keeps the music going
+  const W0 = k ? L[k].T : TL.land, F = FORMS5[L[j].i];
+  if (T < W0) return null;   // a new weapon: silence while the hall changes
+  return [F.ai === 'knight3' ? 'laststand' : MUSIC5_KEYS[F.w], W0];
 }
 function musicUpdate(T) {
   if (!LA.ctx) return;
@@ -215,6 +245,57 @@ function sfxEvent(e) {
     case 'explode': boom(t, 0.75); shatter(t, 0.7, 77); crash(t, 0.8); break;
     case 'bag': [81, 85, 88, 93].forEach((m, i) => bell(t + 0.1 + i * 0.09, mtof(m), 0.8, { vol: 0.09, ratio: 2.0, index: 1.2, bus: 'sfx', rev: 0.5 })); break;
     case 'split': bell(t, 1760, 0.4, { vol: 0.06, ratio: 2, index: 1, bus: 'sfx' }); bell(t + 0.08, 2637, 0.5, { vol: 0.05, ratio: 2, index: 1, bus: 'sfx' }); break;
+    // ---- Oryx V ----
+    case 'morph':
+      if (e.big) { boom(t, 0.9); crash(t, 0.8); choir(t + 0.2, [52, 59, 64, 67], 2.2, 1.4, 'sfx'); }
+      else { whoosh(t, 0.7, 400, 4200, 0.6); sweep(t + 0.1, 90, 55, 0.8, { vol: 0.25, wave: 'sawtooth', bus: 'sfx', rev: 0.4 }); }
+      [76, 79, 83, 88, 91].forEach((m, i) => bell(t + 0.08 * i, mtof(m), 0.6, { vol: 0.06, ratio: 2, index: 1.2, bus: 'sfx', rev: 0.5 }));
+      tubular(t + (e.big ? 1.6 : 0.85), mtof(e.big ? 40 : 52), e.big ? 0.5 : 0.3, e.big ? 5 : 3);
+      break;
+    case 'lob5': sweep(t, 300, 700, 0.14, { vol: 0.05, bus: 'sfx' }); break;
+    case 'land5':
+      if (e.kind === 'bomb') { bell(t, 1320, 0.4, { vol: 0.07, ratio: 2.4, index: 2, bus: 'sfx', rev: 0.3 }); noise(t, 0.2, { vol: 0.14, type: 'lowpass', f: 3000, f2: 300, bus: 'sfx' }); }
+      else if (e.kind === 'skull') { sweep(t, 400, 90, 0.35, { vol: 0.12, wave: 'triangle', bus: 'sfx', rev: 0.4 }); bell(t, 620, 0.5, { vol: 0.05, ratio: 1.41, index: 4, bus: 'sfx', rev: 0.4 }); }
+      else if (e.kind === 'vial') { shatter(t, 0.25, Math.round(t * 70)); for (let i = 0; i < 4; i++) sweep(t + 0.05 + i * 0.06, 300 + i * 90, 700 + i * 120, 0.05, { vol: 0.05, bus: 'sfx' }); }
+      else if (e.kind === 'trap') { noise(t, 0.03, { vol: 0.12, type: 'highpass', f: 4000, bus: 'sfx' }); bell(t, 900, 0.12, { vol: 0.05, ratio: 1.41, index: 3, bus: 'sfx' }); }
+      break;
+    case 'strike5':
+      if (e.kind === 'bolt') { noise(t, 0.25, { vol: 0.3, type: 'highpass', f: 2500, bus: 'sfx', rev: 0.3 }); sweep(t, 180, 50, 0.4, { vol: 0.3, bus: 'sfx' }); }
+      else if (e.kind === 'sword') { bell(t, 520, 0.5, { vol: 0.12, ratio: 1.41, index: 5, bus: 'sfx', rev: 0.3 }); boom(t, 0.3); }
+      else if (e.kind === 'arrow') { noise(t, 0.05, { vol: 0.08, type: 'bandpass', f: 1800, bus: 'sfx' }); noise(t + 0.04, 0.04, { vol: 0.06, type: 'bandpass', f: 2400, bus: 'sfx' }); }
+      else { sweep(t - 0.05, 2400, 300, 0.35, { vol: 0.08, bus: 'sfx', rev: 0.3 }); bell(t, 1760, 0.4, { vol: 0.05, ratio: 2, index: 1, bus: 'sfx', rev: 0.4 }); }
+      break;
+    case 'chain': noise(t, 0.3, { vol: 0.28, type: 'bandpass', f: 3000, f2: 800, q: 1.2, bus: 'sfx', rev: 0.3 }); sweep(t, 1400, 120, 0.25, { vol: 0.08, wave: 'square', bus: 'sfx' }); break;
+    case 'snap': noise(t, 0.04, { vol: 0.14, type: 'bandpass', f: 2600, q: 3, bus: 'sfx' }); bell(t, 330, 0.18, { vol: 0.06, ratio: 1.41, index: 4, bus: 'sfx' }); break;
+    case 'note': { const sc = [64, 67, 69, 71, 74, 76, 79, 81, 83, 86]; bell(t, mtof(sc[((e.k % 10) + 10) % 10]), 0.5, { vol: 0.07, ratio: 3.01, index: 1.2, bus: 'sfx', rev: 0.4, pan: e.k % 2 ? 0.3 : -0.3 }); break; }
+    case 'chord': [64, 68, 71, 76].forEach(m => bell(t, mtof(m), 0.9, { vol: 0.06, ratio: 3.01, index: 1.4, bus: 'sfx', rev: 0.5 })); break;
+    case 'cloak': whoosh(t, 0.5, 4000, 300, 0.5); break;
+    case 'blink5': sweep(t, 200, 1700, 0.12, { vol: 0.12, bus: 'sfx', rev: 0.5 }); noise(t, 0.12, { vol: 0.1, type: 'bandpass', f: 1500, q: 2, bus: 'sfx', rev: 0.4 }); break;
+    case 'split5': [84, 88, 91, 96].forEach((m, i) => bell(t + i * 0.05, mtof(m), 0.4, { vol: 0.06, ratio: 2.7, index: 2, bus: 'sfx', rev: 0.4 })); break;
+    case 'decoyPop': shatter(t, 0.4, Math.round(t * 10)); break;
+    case 'berserk': sweep(t, 120, 60, 0.9, { vol: 0.4, wave: 'sawtooth', bus: 'sfx', rev: 0.3 }); noise(t, 0.6, { vol: 0.2, type: 'bandpass', f: 500, q: 0.8, bus: 'sfx' }); break;
+    case 'seal': [64, 71, 76].forEach((m, i) => bell(t + i * 0.08, mtof(m), 1.0, { vol: 0.07, ratio: 2, index: 1.5, bus: 'sfx', rev: 0.5 })); break;
+    case 'judge': choir(t, [64, 71, 76], 0.5, 0.9, 'sfx'); break;
+    case 'leap': whoosh(t, 0.8, 300, 2200, 0.7); sweep(t, 90, 160, 0.9, { vol: 0.2, wave: 'sawtooth', bus: 'sfx' }); break;
+    case 'chargeUp': sweep(t, 60, 110, 0.9, { vol: 0.18, wave: 'sawtooth', bus: 'sfx' }); break;
+    case 'charge': whoosh(t, 0.5, 3000, 300, 0.9); break;
+    case 'impact': boom(t, 0.7); crash(t, 0.5); break;
+    case 'mirrorUp': [88, 93, 95, 100].forEach((m, i) => bell(t + i * 0.06, mtof(m), 0.5, { vol: 0.06, ratio: 1.01, index: 0.6, bus: 'sfx', rev: 0.5 })); break;
+    case 'freeze': shatter(t, 0.5, 12); sweep(t, 90, 40, 0.8, { vol: 0.35, bus: 'sfx' }); voice(t, 3500, 1.2, { wave: 'sine', vol: 0.02, a: 0.1, d: 0.3, s: 1, r: 0.3, bus: 'sfx' }); break;
+    case 'thaw': noise(t, 0.1, { vol: 0.2, type: 'highpass', f: 3000, bus: 'sfx' }); whoosh(t, 0.4, 600, 3000, 0.5); break;
+    case 'release': whoosh(t, 0.5, 500, 2500, 0.5); break;
+    case 'drawBow': sweep(t, 180, 260, 0.6, { vol: 0.05, wave: 'triangle', bus: 'sfx' }); break;
+    case 'quiver': sweep(t, 900, 120, 0.2, { vol: 0.22, wave: 'triangle', bus: 'sfx' }); noise(t, 0.3, { vol: 0.2, type: 'bandpass', f: 1200, f2: 300, bus: 'sfx' }); break;
+    case 'chase': boom(t, 0.55); sweep(t, 95, 190, 0.55, { vol: 0.22, wave: 'sawtooth', bus: 'sfx', rev: 0.3 }); for (let i = 0; i < 3; i++) noise(t + 0.12 * i, 0.07, { vol: 0.16, type: 'bandpass', f: 900 + 300 * i, q: 3, bus: 'sfx' }); break;
+    case 'rise': choir(t, [55, 62, 67, 71], 1.4, 1.0, 'sfx'); whoosh(t, 1.0, 300, 3200, 0.6); break;
+    case 'heroDie': boom(t, 0.6); shatter(t, 0.6, Math.round(t * 30)); tubular(t + 0.1, mtof(43), 0.35, 4); break;
+    case 'kneel': choir(t, [48, 55, 60, 64], 2.0, 1.2, 'sfx'); break;
+    case 'raise': sweep(t, 90, 180, 0.7, { vol: 0.14, wave: 'sawtooth', bus: 'sfx', rev: 0.4 }); noise(t, 0.4, { vol: 0.08, type: 'lowpass', f: 900, bus: 'sfx' }); break;
+    case 'growl': sweep(t, 110, 70, 0.5, { vol: 0.2, wave: 'sawtooth', bus: 'sfx' }); noise(t, 0.45, { vol: 0.1, type: 'bandpass', f: 300, q: 1.5, bus: 'sfx' }); break;
+    case 'lunge': whoosh(t, 0.35, 2500, 400, 0.6); break;
+    case 'lance': sweep(t, 600, 2400, 0.3, { vol: 0.08, wave: 'triangle', bus: 'sfx', rev: 0.4 }); bell(t, 1976, 0.6, { vol: 0.05, ratio: 2, index: 1, bus: 'sfx', rev: 0.5 }); break;
+    case 'path': [72, 76, 79, 84].forEach((m, i) => bell(t + i * 0.05, mtof(m), 0.5, { vol: 0.05, ratio: 3.01, index: 1, bus: 'sfx', rev: 0.5 })); break;
+    case 'sector': bell(t, 1320, 0.4, { vol: 0.08, ratio: 3.01, index: 1.4, bus: 'sfx', rev: 0.4 }); boom(t, 0.35); break;
     case 'death': boom(t, 0.8); sweep(t + 0.1, 440, 55, 1.6, { vol: 0.25, wave: 'square', bus: 'sfx', rev: 0.5 }); tubular(t + 0.2, mtof(38), 0.4, 5); break;
   }
 }
