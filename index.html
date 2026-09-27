@@ -1437,10 +1437,15 @@ function fireP(kind, T, wt, ang, dmgFn) {
   const p = S.p, pk = PK[kind], x0 = p.x, y0 = p.y - 0.25, dx = Math.cos(ang), dy = Math.sin(ang);
   let best = null, bestS = pk.range;
   if (T >= TL.land && T < T_KILL && (BOSS_N !== 5 || knight5())) {   // (Oryx V's parties have no weak point)
-    const w = wpLead(T, wt, x0, y0, pk.spd), s = rayCircle(x0, y0, dx, dy, w.x, w.y, WP_R);
+    const w = wpLead(T, wt, x0, y0, pk.spd), R = BOSS_N === 5 ? WP_R5 : WP_R, now = BOSS_N === 5 && wpPos(T, wt, S.boss);   // (Oryx V: his soul is hit where it is or where it will be)
+    let s = rayCircle(x0, y0, dx, dy, w.x, w.y, R); if (now) s = Math.min(s, rayCircle(x0, y0, dx, dy, now.x, now.y, R));
     if (s < pk.range) { best = { wp: true, x: w.x, y: w.y }; bestS = s; }
   }
-  if (!best) for (const tg of targets(T)) { const s = rayCircle(x0, y0, dx, dy, tg.x, tg.y, tg.r); if (s < bestS) { bestS = s; best = tg; } }
+  if (!best) for (const tg of targets(T)) {
+    let s = rayCircle(x0, y0, dx, dy, tg.x, tg.y, tg.r);
+    if (tg.vx) { const tau = Math.hypot(tg.x - x0, tg.y - y0) / pk.spd; for (const u of [0.5, 1]) s = Math.min(s, rayCircle(x0, y0, dx, dy, tg.x + tg.vx * tau * u, tg.y + tg.vy * tau * u, tg.r)); }   // a moving target is hit where it is, where it will be, or in between
+    if (s < bestS) { bestS = s; best = tg; }
+  }
   const life = (best ? bestS : pk.range) / pk.spd;
   S.pb.push({ t0: wt, x0, y0, ang, spd: pk.spd, life, k: kind, hitT: best ? wt + life : Infinity });
   if (best) { const d = dmgFn(); S.pend.push({ t: wt + life, dmg: d.dmg, crit: d.crit, kind, tg: best, x: x0 + dx * bestS, y: y0 + dy * bestS }); }
@@ -1772,14 +1777,14 @@ const HERO5 = {
 };
 const WEAPONS5 = ['THE STAFF', 'THE WAND', 'THE BOW', 'THE DAGGER', 'THE SWORD', 'THE KNIGHT'];
 const MUSIC5_KEYS = ['staff', 'wand', 'bow', 'dagger', 'sword', 'knight'];
-const PRACT5 = [0, 1, 2, 3, 4, 5];   // practice: each weapon's stage
+const PRACT5 = [0, 1, 2, 3, 4, 5, 7];   // practice: each weapon's stage, and the Knight's Last Stand
 const STAGE_HP5 = FORMS5.map(F => F.surv ? 0 : F.party ? F.party.reduce((a, id) => a + HERO5[id].hp, 0) : F.hp);
 const MAXHP5 = STAGE_HP5.reduce((a, v) => a + v, 0);
 const FLOOR5 = (() => { let c = 0; return STAGE_HP5.map((v, i) => { c += v; return i === FORMS5.length - 1 ? 0 : 1 - c / MAXHP5; }); })();
 const SPLITS5 = ['Staff', 'Wand', 'Bow', 'Dagger', 'Sword', 'Knight'].map(name => ({ name, T: Infinity, pb: null }));
 const PHASES5 = WEAPONS5.map((name, i) => ({ num: ['I', 'II', 'III', 'IV', 'V', 'VI'][i], name }));
 const TRANS5 = { stance: 2.0, weapon: 3.2, last: 3.0 };
-const HOME5 = { x: 0, y: -1.4 }, WP_ORB5 = 2.2, HERO5_R = 1.2, HERO5_BODY = 1.45;
+const HOME5 = { x: 0, y: -1.4 }, WP_ORB5 = 2.2, WP_R5 = 1.45, HERO5_R = 1.45, HERO5_BODY = 1.45;   // (hitboxes a little larger than the drawn soul and heroes)
 // bullet kinds: hitbox radius, base damage (x TUNE.bulletMul, the same range as Oryx IV), glow colour, sprite scale and orientation
 Object.assign(BK, {
   sbolt: { r: 0.16, dmg: 100, glow: 'p', sc: 4.2, orient: 1 }, nova: { r: 0.2, dmg: 100, glow: 'g', sc: 5 }, shur: { r: 0.18, dmg: 110, glow: 'g', sc: 4, spin: 9 },
@@ -1826,11 +1831,12 @@ function vuln5(T) {
   if (T < TL.land + 0.5 || T >= T_KILL || !knight5()) return false;
   const f = S.f5; return !(T >= f.mT && T < f.T);
 }
-const heroVuln5 = (h, T) => T >= h.T && !(h.prot > T) && !(h.cloak > T) && !S.mobs.some(m => m.owner === h && m.must && m.deadT === Infinity);
+const heroVuln5 = (h, T) => T >= h.rise + 0.9 && !(h.prot > T) && !(h.cloak > T) && !S.mobs.some(m => m.owner === h && m.must && m.deadT === Infinity);
 function targets5(T, L) {
-  for (const h of S.heroes) if (h.deadT === Infinity && T >= h.rise + 0.6 && !(h.cloak > T)) L.push({ x: h.x, y: h.y - h.z - 0.3, r: HERO5_R, hero: h });
-  for (const m of S.mobs) if (m.hp && m.deadT === Infinity && T >= m.T + 0.4) L.push({ x: m.x, y: m.y, r: m.r, sent: m, mob: 1 });
-  for (const d of S.decoys) if (T >= d.T && T < d.until) L.push({ x: d.x, y: d.y - 0.3, r: HERO5_R, body: true, decoy: 1 });
+  const fast = (vx, vy) => Math.hypot(vx, vy) < 25;   // (a blink is not motion to lead)
+  for (const h of S.heroes) if (h.deadT === Infinity && T >= h.rise + 0.6 && !(h.cloak > T)) L.push({ x: h.x, y: h.y - h.z - 0.3, r: HERO5_R, hero: h, vx: fast(h.vx, h.vy) ? h.vx : 0, vy: fast(h.vx, h.vy) ? h.vy : 0 });
+  for (const m of S.mobs) if (m.hp && m.deadT === Infinity && T >= m.T + 0.4) L.push({ x: m.x, y: m.y, r: m.r * 1.2, sent: m, mob: 1, vx: fast(m.vx || 0, m.vy || 0) ? m.vx || 0 : 0, vy: fast(m.vx || 0, m.vy || 0) ? m.vy || 0 : 0 });
+  for (const d of S.decoys) if (T >= d.T && T < d.until) L.push({ x: d.x, y: d.y - 0.3, r: 1.2, body: true, decoy: 1 });
 }
 // a shot landing on a hero (or, in a survival phase, on anyone): returns the damage it does to the fight's health, or null
 // to let the shared code handle it (the Knight's soul, mirrors, minions, armour)
@@ -1845,7 +1851,7 @@ function hit5(h, T) {
     S.ev.push({ T, type: star ? 'starHit' : 'hit', crit: h.crit });
   };
   if (sv) { f.sv.bonus += d / f.sv.K; land(d, { surv: true }); return 0; }
-  if (!heroVuln5(z, T)) { S.hits.push({ wt: h.t, x: h.x, y: h.y, dmg: 0, armor: true, kind: h.kind }); S.ev.push({ T, type: 'dink', heavy: star }); return 0; }
+  if (!heroVuln5(z, T) || !(z.hp > 0)) { S.hits.push({ wt: h.t, x: h.x, y: h.y, dmg: 0, armor: true, kind: h.kind }); S.ev.push({ T, type: 'dink', heavy: star }); return 0; }   // (the Colosseum's champions only ever feed its clock)
   const dd = Math.min(d, z.hp - z.dmg); z.dmg += dd; land(dd, { hero: z.id });
   if (z.dmg >= z.hp - 0.5) heroDie5(z, T);
   return dd;
@@ -2100,7 +2106,7 @@ const HAI5 = {
       { name: 'TOME OF HOLY PROTECTION', dur: 3.2, fn(h, T0, T1, B) {   // a golden barrier on the most wounded of the rest of the choir, while smites fall on you
         if (once5(T0, T1, B)) {
           const q = S.heroes.filter(c => c.deadT === Infinity && c !== h && c.dmg > 0).sort((a, c) => c.dmg / c.hp - a.dmg / a.hp)[0];
-          if (q) { q.prot = B + 3.0; S.fx.push({ T: B, type: 'protect', x: q.x, y: q.y, h: q }); S.ev.push({ T: B, type: 'seal' }); }
+          if (q) { q.prot = B + 2.0; S.fx.push({ T: B, type: 'protect', x: q.x, y: q.y, h: q }); S.ev.push({ T: B, type: 'seal' }); }
           const g = S.rng(); ring5(B, h.x, h.y, 36, 3.4, 'holy', 0, { r0: 1.4, gaps: [[g, 4 / 36], [g + 0.5, 4 / 36]], bounce: 1 });
         }
         for (const [t] of ticks(T0, T1, B + 0.4, B + 2.6, per5(0.55))) { const [x, y] = intoA5(S.p.x + S.p.vx * 0.45, S.p.y + S.p.vy * 0.45, 1.0); pillar5(t, x, y, { kind: 'smite', tele: 0.75, r: 1.1, dmg: 150, burst: { n: 6, spd: 3.6, k: 'holy', life: 2.6 } }); }
@@ -2826,6 +2832,7 @@ function ai5(T0, T1) {
   else if (F.party) party5(T0, T1);
   else if (T1 >= f.T) { SRC5 = F.ai; AI5[F.ai](T0, T1, f.T); }
   SRC5 = 'minion'; mobs5(T1); traps5(T1);
+  for (const m of S.mobs) { m.vx = (m.x - (m.lx ?? m.x)) * FPS; m.vy = (m.y - (m.ly ?? m.y)) * FPS; m.lx = m.x; m.ly = m.y; }   // (how fast each minion moves: shots lead it)
   for (const d of S.decoys) if (d.chase) {
     if (d.at && T1 >= d.at) { d.at = 0; dash5(d, T1, { spd: 15, tele: 0.55, k: 'prism', over: 4, trail: 0.4, col: 'w' }); }
     if (d.go && T1 >= d.go.T0) { const u = sat((T1 - d.go.T0) / (d.go.T1 - d.go.T0)); d.x = lerp(d.go.x0, d.go.x1, u); d.y = lerp(d.go.y0, d.go.y1, u); }
@@ -4029,7 +4036,7 @@ function drawSidebar(x, T) {
 function gearFocus(T) { if (T < 15.4 || T >= 22.4) return -1; return Math.floor((T - 15.4) / 1.75); }
 
 // ---------- LiveSplit-style panel ----------
-const practiceName = p => BOSS_N === 5 ? WEAPONS5[p - 1].toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
+const practiceName = p => BOSS_N === 5 ? (p === 7 ? 'the Last Stand' : WEAPONS5[p - 1].toLowerCase().replace(/\b\w/g, c => c.toUpperCase())) : p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
 function drawSplits(x, T) {
   const X = GW + 10, Y = 786, w = 340;
   x.fillStyle = '#0a0a0e'; x.fillRect(X, Y, w, H - Y - 8);
@@ -5962,7 +5969,7 @@ addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') pickDiff(DIFF_ORDER[Math.max(0, di - 1)]);
     if (e.code === 'ArrowRight' || e.code === 'KeyD') pickDiff(DIFF_ORDER[Math.min(2, di + 1)]);
     if (e.code === 'Enter' || e.code === 'NumpadEnter') begin(0);
-    const n = +e.key; if (n >= 1 && n <= 6) begin(n);
+    const n = +e.key; if (n >= 1 && n <= PRACTICE_BTNS[BOSS_N].length) begin(n);
     if (e.code === 'KeyM') setMuted(!LA.muted);
     return;
   }
@@ -5994,7 +6001,7 @@ addEventListener('mouseup', e => { if (e.button === 0) G.lmb = false; });
 CV.addEventListener('contextmenu', e => e.preventDefault());
 CV.addEventListener('auxclick', e => e.preventDefault());
 const diffX = i => 1140 + i * 220;
-const PRACTICE_BTNS = { 4: ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], 5: ['STAFF', 'WAND', 'BOW', 'DAGGER', 'SWORD', 'KNIGHT'] }, practX = i => 1055 + i * 122, PRACT_Y = 784;
+const PRACTICE_BTNS = { 4: ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], 5: ['STAFF', 'WAND', 'BOW', 'DAGGER', 'SWORD', 'KNIGHT', 'LAST STAND'] }, practX = i => 1360 + (i - (PRACTICE_BTNS[BOSS_N].length - 1) / 2) * 122, PRACT_Y = 784;
 const practiceHit = () => PRACTICE_BTNS[BOSS_N].findIndex((_, i) => Math.abs(G.mx - practX(i)) < 58 && Math.abs(G.my - PRACT_Y) < 18);
 // the two fights: tabs at the top of the title screen
 const bossX = n => n === 4 ? 1240 : 1480, BOSS_TAB_Y = 44;
@@ -6104,7 +6111,7 @@ function drawDeath(x, T, now) {
   const ph = F5 ? PHASES5[F5.w] : PHASES[phaseOf(S.dead)];
   txt(x, (!F5 && S.dead >= TL.sv ? 'The Final Seconds — ' + Math.max(0, survLeft(S.dead)).toFixed(1) + 's left' : 'Phase ' + ph.num + ' — ' + ph.name + (F5 && F5.stance ? ' · ' + F5.stance : '') + '   ·   ' + (F5 && F5.surv ? Math.max(0, survLeft5(S.dead)).toFixed(1) + ' s left on the clock' : 'boss HP ' + hp.toFixed(1) + '%')) + '   ·   ' + fmtTime(S.dead - T_RUN), cx, cy + 310, 24, '#c9b8d8', { sw: 4 });
   txt(x, 'R — try again        ENTER — title', cx, cy + 380, 22, Math.floor(u * 2) % 2 ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
-  const pn = F5 ? F5.w + 1 : S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1;
+  const pn = F5 ? (F5.ai === 'knight3' ? 7 : F5.w + 1) : S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1;
   if (!G.practice && pn >= 2) txt(x, 'Tip: press ' + pn + ' on the title screen to practice this phase.', cx, cy + 424, 18, '#9c95ab', { sw: 3 });
   x.globalAlpha = 1;
 }
@@ -6164,7 +6171,7 @@ function drawTitle(x, t) {
   const blink = Math.floor(t * 2) % 2 === 0;
   txt(x, 'ENTER or CLICK — begin the run', 1360, 720, 26, blink ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
   // practice: click a phase, or press its number
-  txt(x, 'PRACTICE A PHASE — click or press 1–6', 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
+  txt(x, 'PRACTICE A PHASE — click or press 1–' + PRACTICE_BTNS[BOSS_N].length, 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
   const ph = practiceHit();
   PRACTICE_BTNS[BOSS_N].forEach((name, i) => {
     const cx = practX(i), on = ph === i;

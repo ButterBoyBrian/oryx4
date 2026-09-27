@@ -28,14 +28,14 @@ const HERO5 = {
 };
 const WEAPONS5 = ['THE STAFF', 'THE WAND', 'THE BOW', 'THE DAGGER', 'THE SWORD', 'THE KNIGHT'];
 const MUSIC5_KEYS = ['staff', 'wand', 'bow', 'dagger', 'sword', 'knight'];
-const PRACT5 = [0, 1, 2, 3, 4, 5];   // practice: each weapon's stage
+const PRACT5 = [0, 1, 2, 3, 4, 5, 7];   // practice: each weapon's stage, and the Knight's Last Stand
 const STAGE_HP5 = FORMS5.map(F => F.surv ? 0 : F.party ? F.party.reduce((a, id) => a + HERO5[id].hp, 0) : F.hp);
 const MAXHP5 = STAGE_HP5.reduce((a, v) => a + v, 0);
 const FLOOR5 = (() => { let c = 0; return STAGE_HP5.map((v, i) => { c += v; return i === FORMS5.length - 1 ? 0 : 1 - c / MAXHP5; }); })();
 const SPLITS5 = ['Staff', 'Wand', 'Bow', 'Dagger', 'Sword', 'Knight'].map(name => ({ name, T: Infinity, pb: null }));
 const PHASES5 = WEAPONS5.map((name, i) => ({ num: ['I', 'II', 'III', 'IV', 'V', 'VI'][i], name }));
 const TRANS5 = { stance: 2.0, weapon: 3.2, last: 3.0 };
-const HOME5 = { x: 0, y: -1.4 }, WP_ORB5 = 2.2, HERO5_R = 1.2, HERO5_BODY = 1.45;
+const HOME5 = { x: 0, y: -1.4 }, WP_ORB5 = 2.2, WP_R5 = 1.45, HERO5_R = 1.45, HERO5_BODY = 1.45;   // (hitboxes a little larger than the drawn soul and heroes)
 // bullet kinds: hitbox radius, base damage (x TUNE.bulletMul, the same range as Oryx IV), glow colour, sprite scale and orientation
 Object.assign(BK, {
   sbolt: { r: 0.16, dmg: 100, glow: 'p', sc: 4.2, orient: 1 }, nova: { r: 0.2, dmg: 100, glow: 'g', sc: 5 }, shur: { r: 0.18, dmg: 110, glow: 'g', sc: 4, spin: 9 },
@@ -82,11 +82,12 @@ function vuln5(T) {
   if (T < TL.land + 0.5 || T >= T_KILL || !knight5()) return false;
   const f = S.f5; return !(T >= f.mT && T < f.T);
 }
-const heroVuln5 = (h, T) => T >= h.T && !(h.prot > T) && !(h.cloak > T) && !S.mobs.some(m => m.owner === h && m.must && m.deadT === Infinity);
+const heroVuln5 = (h, T) => T >= h.rise + 0.9 && !(h.prot > T) && !(h.cloak > T) && !S.mobs.some(m => m.owner === h && m.must && m.deadT === Infinity);
 function targets5(T, L) {
-  for (const h of S.heroes) if (h.deadT === Infinity && T >= h.rise + 0.6 && !(h.cloak > T)) L.push({ x: h.x, y: h.y - h.z - 0.3, r: HERO5_R, hero: h });
-  for (const m of S.mobs) if (m.hp && m.deadT === Infinity && T >= m.T + 0.4) L.push({ x: m.x, y: m.y, r: m.r, sent: m, mob: 1 });
-  for (const d of S.decoys) if (T >= d.T && T < d.until) L.push({ x: d.x, y: d.y - 0.3, r: HERO5_R, body: true, decoy: 1 });
+  const fast = (vx, vy) => Math.hypot(vx, vy) < 25;   // (a blink is not motion to lead)
+  for (const h of S.heroes) if (h.deadT === Infinity && T >= h.rise + 0.6 && !(h.cloak > T)) L.push({ x: h.x, y: h.y - h.z - 0.3, r: HERO5_R, hero: h, vx: fast(h.vx, h.vy) ? h.vx : 0, vy: fast(h.vx, h.vy) ? h.vy : 0 });
+  for (const m of S.mobs) if (m.hp && m.deadT === Infinity && T >= m.T + 0.4) L.push({ x: m.x, y: m.y, r: m.r * 1.2, sent: m, mob: 1, vx: fast(m.vx || 0, m.vy || 0) ? m.vx || 0 : 0, vy: fast(m.vx || 0, m.vy || 0) ? m.vy || 0 : 0 });
+  for (const d of S.decoys) if (T >= d.T && T < d.until) L.push({ x: d.x, y: d.y - 0.3, r: 1.2, body: true, decoy: 1 });
 }
 // a shot landing on a hero (or, in a survival phase, on anyone): returns the damage it does to the fight's health, or null
 // to let the shared code handle it (the Knight's soul, mirrors, minions, armour)
@@ -101,7 +102,7 @@ function hit5(h, T) {
     S.ev.push({ T, type: star ? 'starHit' : 'hit', crit: h.crit });
   };
   if (sv) { f.sv.bonus += d / f.sv.K; land(d, { surv: true }); return 0; }
-  if (!heroVuln5(z, T)) { S.hits.push({ wt: h.t, x: h.x, y: h.y, dmg: 0, armor: true, kind: h.kind }); S.ev.push({ T, type: 'dink', heavy: star }); return 0; }
+  if (!heroVuln5(z, T) || !(z.hp > 0)) { S.hits.push({ wt: h.t, x: h.x, y: h.y, dmg: 0, armor: true, kind: h.kind }); S.ev.push({ T, type: 'dink', heavy: star }); return 0; }   // (the Colosseum's champions only ever feed its clock)
   const dd = Math.min(d, z.hp - z.dmg); z.dmg += dd; land(dd, { hero: z.id });
   if (z.dmg >= z.hp - 0.5) heroDie5(z, T);
   return dd;
@@ -356,7 +357,7 @@ const HAI5 = {
       { name: 'TOME OF HOLY PROTECTION', dur: 3.2, fn(h, T0, T1, B) {   // a golden barrier on the most wounded of the rest of the choir, while smites fall on you
         if (once5(T0, T1, B)) {
           const q = S.heroes.filter(c => c.deadT === Infinity && c !== h && c.dmg > 0).sort((a, c) => c.dmg / c.hp - a.dmg / a.hp)[0];
-          if (q) { q.prot = B + 3.0; S.fx.push({ T: B, type: 'protect', x: q.x, y: q.y, h: q }); S.ev.push({ T: B, type: 'seal' }); }
+          if (q) { q.prot = B + 2.0; S.fx.push({ T: B, type: 'protect', x: q.x, y: q.y, h: q }); S.ev.push({ T: B, type: 'seal' }); }
           const g = S.rng(); ring5(B, h.x, h.y, 36, 3.4, 'holy', 0, { r0: 1.4, gaps: [[g, 4 / 36], [g + 0.5, 4 / 36]], bounce: 1 });
         }
         for (const [t] of ticks(T0, T1, B + 0.4, B + 2.6, per5(0.55))) { const [x, y] = intoA5(S.p.x + S.p.vx * 0.45, S.p.y + S.p.vy * 0.45, 1.0); pillar5(t, x, y, { kind: 'smite', tele: 0.75, r: 1.1, dmg: 150, burst: { n: 6, spd: 3.6, k: 'holy', life: 2.6 } }); }
@@ -1082,6 +1083,7 @@ function ai5(T0, T1) {
   else if (F.party) party5(T0, T1);
   else if (T1 >= f.T) { SRC5 = F.ai; AI5[F.ai](T0, T1, f.T); }
   SRC5 = 'minion'; mobs5(T1); traps5(T1);
+  for (const m of S.mobs) { m.vx = (m.x - (m.lx ?? m.x)) * FPS; m.vy = (m.y - (m.ly ?? m.y)) * FPS; m.lx = m.x; m.ly = m.y; }   // (how fast each minion moves: shots lead it)
   for (const d of S.decoys) if (d.chase) {
     if (d.at && T1 >= d.at) { d.at = 0; dash5(d, T1, { spd: 15, tele: 0.55, k: 'prism', over: 4, trail: 0.4, col: 'w' }); }
     if (d.go && T1 >= d.go.T0) { const u = sat((T1 - d.go.T0) / (d.go.T1 - d.go.T0)); d.x = lerp(d.go.x0, d.go.x1, u); d.y = lerp(d.go.y0, d.go.y1, u); }

@@ -1156,7 +1156,7 @@ function drawSidebar(x, T) {
 function gearFocus(T) { if (T < 15.4 || T >= 22.4) return -1; return Math.floor((T - 15.4) / 1.75); }
 
 // ---------- LiveSplit-style panel ----------
-const practiceName = p => BOSS_N === 5 ? WEAPONS5[p - 1].toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
+const practiceName = p => BOSS_N === 5 ? (p === 7 ? 'the Last Stand' : WEAPONS5[p - 1].toLowerCase().replace(/\b\w/g, c => c.toUpperCase())) : p === 6 ? 'the Final Seconds' : 'Phase ' + PHASES[p - 1].num;
 function drawSplits(x, T) {
   const X = GW + 10, Y = 786, w = 340;
   x.fillStyle = '#0a0a0e'; x.fillRect(X, Y, w, H - Y - 8);

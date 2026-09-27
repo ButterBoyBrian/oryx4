@@ -10,7 +10,7 @@ Two fan-made bullet-hell boss fights inspired by Realm of the Mad God's Oryx ser
   fights you himself, as the Knight. Every hero has its own health and signature moves named for its items, and the
   heroes strafe, dash and blink around you while they fight; every so often a whole party breaks off and hunts you
   down. The Colosseum and the Knight's Last Stand are survival phases: outlast a clock that every hit you land winds
-  down faster. It lasts about five minutes and is much harder than Oryx IV.
+  down faster. It lasts four to five minutes and is much harder than Oryx IV.
 
 Sprites, music and sound are original and generated in code.
 
@@ -27,7 +27,7 @@ Sprites, music and sound are original and generated in code.
 | Spell | Space |
 | HP / MP potion | F / V |
 | Pause | Esc (then R to restart) |
-| Practice a phase | 1–6 on the title screen |
+| Practice a phase | 1–6 on the title screen (Oryx V adds 7: the Knight's Last Stand) |
 
 Difficulties: **Easy**, **Hard** (default), **Diabolical**.
 

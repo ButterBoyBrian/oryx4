@@ -27,7 +27,7 @@ addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') pickDiff(DIFF_ORDER[Math.max(0, di - 1)]);
     if (e.code === 'ArrowRight' || e.code === 'KeyD') pickDiff(DIFF_ORDER[Math.min(2, di + 1)]);
     if (e.code === 'Enter' || e.code === 'NumpadEnter') begin(0);
-    const n = +e.key; if (n >= 1 && n <= 6) begin(n);
+    const n = +e.key; if (n >= 1 && n <= PRACTICE_BTNS[BOSS_N].length) begin(n);
     if (e.code === 'KeyM') setMuted(!LA.muted);
     return;
   }
@@ -59,7 +59,7 @@ addEventListener('mouseup', e => { if (e.button === 0) G.lmb = false; });
 CV.addEventListener('contextmenu', e => e.preventDefault());
 CV.addEventListener('auxclick', e => e.preventDefault());
 const diffX = i => 1140 + i * 220;
-const PRACTICE_BTNS = { 4: ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], 5: ['STAFF', 'WAND', 'BOW', 'DAGGER', 'SWORD', 'KNIGHT'] }, practX = i => 1055 + i * 122, PRACT_Y = 784;
+const PRACTICE_BTNS = { 4: ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], 5: ['STAFF', 'WAND', 'BOW', 'DAGGER', 'SWORD', 'KNIGHT', 'LAST STAND'] }, practX = i => 1360 + (i - (PRACTICE_BTNS[BOSS_N].length - 1) / 2) * 122, PRACT_Y = 784;
 const practiceHit = () => PRACTICE_BTNS[BOSS_N].findIndex((_, i) => Math.abs(G.mx - practX(i)) < 58 && Math.abs(G.my - PRACT_Y) < 18);
 // the two fights: tabs at the top of the title screen
 const bossX = n => n === 4 ? 1240 : 1480, BOSS_TAB_Y = 44;
@@ -169,7 +169,7 @@ function drawDeath(x, T, now) {
   const ph = F5 ? PHASES5[F5.w] : PHASES[phaseOf(S.dead)];
   txt(x, (!F5 && S.dead >= TL.sv ? 'The Final Seconds — ' + Math.max(0, survLeft(S.dead)).toFixed(1) + 's left' : 'Phase ' + ph.num + ' — ' + ph.name + (F5 && F5.stance ? ' · ' + F5.stance : '') + '   ·   ' + (F5 && F5.surv ? Math.max(0, survLeft5(S.dead)).toFixed(1) + ' s left on the clock' : 'boss HP ' + hp.toFixed(1) + '%')) + '   ·   ' + fmtTime(S.dead - T_RUN), cx, cy + 310, 24, '#c9b8d8', { sw: 4 });
   txt(x, 'R — try again        ENTER — title', cx, cy + 380, 22, Math.floor(u * 2) % 2 ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
-  const pn = F5 ? F5.w + 1 : S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1;
+  const pn = F5 ? (F5.ai === 'knight3' ? 7 : F5.w + 1) : S.dead >= TL.sv ? 6 : phaseOf(S.dead) + 1;
   if (!G.practice && pn >= 2) txt(x, 'Tip: press ' + pn + ' on the title screen to practice this phase.', cx, cy + 424, 18, '#9c95ab', { sw: 3 });
   x.globalAlpha = 1;
 }
@@ -229,7 +229,7 @@ function drawTitle(x, t) {
   const blink = Math.floor(t * 2) % 2 === 0;
   txt(x, 'ENTER or CLICK — begin the run', 1360, 720, 26, blink ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
   // practice: click a phase, or press its number
-  txt(x, 'PRACTICE A PHASE — click or press 1–6', 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
+  txt(x, 'PRACTICE A PHASE — click or press 1–' + PRACTICE_BTNS[BOSS_N].length, 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
   const ph = practiceHit();
   PRACTICE_BTNS[BOSS_N].forEach((name, i) => {
     const cx = practX(i), on = ph === i;

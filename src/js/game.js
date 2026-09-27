@@ -661,10 +661,15 @@ function fireP(kind, T, wt, ang, dmgFn) {
   const p = S.p, pk = PK[kind], x0 = p.x, y0 = p.y - 0.25, dx = Math.cos(ang), dy = Math.sin(ang);
   let best = null, bestS = pk.range;
   if (T >= TL.land && T < T_KILL && (BOSS_N !== 5 || knight5())) {   // (Oryx V's parties have no weak point)
-    const w = wpLead(T, wt, x0, y0, pk.spd), s = rayCircle(x0, y0, dx, dy, w.x, w.y, WP_R);
+    const w = wpLead(T, wt, x0, y0, pk.spd), R = BOSS_N === 5 ? WP_R5 : WP_R, now = BOSS_N === 5 && wpPos(T, wt, S.boss);   // (Oryx V: his soul is hit where it is or where it will be)
+    let s = rayCircle(x0, y0, dx, dy, w.x, w.y, R); if (now) s = Math.min(s, rayCircle(x0, y0, dx, dy, now.x, now.y, R));
     if (s < pk.range) { best = { wp: true, x: w.x, y: w.y }; bestS = s; }
   }
-  if (!best) for (const tg of targets(T)) { const s = rayCircle(x0, y0, dx, dy, tg.x, tg.y, tg.r); if (s < bestS) { bestS = s; best = tg; } }
+  if (!best) for (const tg of targets(T)) {
+    let s = rayCircle(x0, y0, dx, dy, tg.x, tg.y, tg.r);
+    if (tg.vx) { const tau = Math.hypot(tg.x - x0, tg.y - y0) / pk.spd; for (const u of [0.5, 1]) s = Math.min(s, rayCircle(x0, y0, dx, dy, tg.x + tg.vx * tau * u, tg.y + tg.vy * tau * u, tg.r)); }   // a moving target is hit where it is, where it will be, or in between
+    if (s < bestS) { bestS = s; best = tg; }
+  }
   const life = (best ? bestS : pk.range) / pk.spd;
   S.pb.push({ t0: wt, x0, y0, ang, spd: pk.spd, life, k: kind, hitT: best ? wt + life : Infinity });
   if (best) { const d = dmgFn(); S.pend.push({ t: wt + life, dmg: d.dmg, crit: d.crit, kind, tg: best, x: x0 + dx * bestS, y: y0 + dy * bestS }); }
