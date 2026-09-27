@@ -347,7 +347,7 @@ function drawSafeLanes(g, T) {
     const w = handW(h), th = -Math.PI / 2 + w * (T - S.survHands);
     tmin = Math.min(tmin, (((pa - th) * Math.sign(w)) % TAU + TAU) % TAU / Math.abs(w));
   }
-  const u = sat(1 - tmin / 1.2); if (u <= 0) return;
+  const u = sat(1 - tmin / 1.8); if (u <= 0) return;
   const cut = [];
   for (const h of hands) { let r = h.r0; for (const [a, z] of h.gaps) { cut.push([r, a]); r = z; } cut.push([r, h.r1]); }
   cut.sort((a, b) => a[0] - b[0]);
@@ -704,10 +704,10 @@ function drawRangeRing(g, T, wt, wf) {
 function drawHitbox(g, T, wf) {
   if (S.dead || T >= T_KILL) return;
   const [sx, sy] = w2s(RP.x, RP.y), x = Math.round(sx), y = Math.round(sy);   // whole pixels: perfectly symmetric
-  g.globalCompositeOperation = 'lighter'; glowAt(g, 'w', x, y, 34, 0.55); g.globalCompositeOperation = 'source-over';   // soft halo
-  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 8, 0, TAU); g.fill();
-  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 6.5, 0, TAU); g.fill();
+  g.globalCompositeOperation = 'lighter'; glowAt(g, 'w', x, y, 22, 0.5); g.globalCompositeOperation = 'source-over';   // soft halo
   g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 4.5, 0, TAU); g.fill();
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3.5, 0, TAU); g.fill();
+  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 2, 0, TAU); g.fill();
 }
 // the Heart of the Hour: the only part of the boss that takes damage
 function drawWeakPoint(g, T, wt) {
