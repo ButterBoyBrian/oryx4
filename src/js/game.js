@@ -26,7 +26,7 @@ const BK = {
   hand: { r: 0.18, dmg: 160, glow: 'm', sc: 5, orient: 1 },
   sand: { r: 0.12, dmg: 60, glow: 'g', sc: 6 },
   shard: { r: 0.14, dmg: 85, glow: 'c', sc: 5, orient: 1 },
-  clk: { r: 0.19, dmg: 150, glow: 'r', sc: 5, radial: 1 },   // blades of the midnight clock hands
+  clk: { r: 0.22, dmg: 150, glow: 'r', sc: 5, radial: 1 },   // blades of the midnight clock hands (segments overlap: no gaps along the blade)
   pend: { r: 0.25, dmg: 150, glow: 'g', sc: 4.5, spin: 4 },  // gears of the midnight pendulum
   seek: { r: 0.17, dmg: 110, glow: 'r', sc: 5, orient: 1 },   // Second Hands (homing needles)
 };
@@ -131,7 +131,7 @@ function emitB(te, o) {
   const dm = CUR_T >= TL.p3 && CUR_T < TL.mn ? TUNE.p3dmg : 1;
   const k = BK[o.k], v = o.raw ? 1 : TUNE.speed * (o.sweep ? TUNE.sweep : 1) * (CUR_T >= TL.p4 && CUR_T < TL.m12 ? TUNE.p4speed : 1);
   const b = { t0: o.t0 !== undefined ? o.t0 : wtAt(te), dl: o.dl || 0, cx: o.cx, cy: o.cy, r0: o.r0 || 0, vr: (o.vr || 0) * v, ar: (o.ar || 0) * v * v, th: o.th, w: (o.w || 0) * v,
-    life: (o.life || 5) / v, arm: Math.max(o.arm || 0, 0.2), T0: CUR_T, rad: k.r, k: o.k, dmg: (o.dmg || k.dmg) * TUNE.bulletMul * dm, hit: Infinity, st: o.st || 0, so: S.off - (o.stBase || 0), rv: o.rv || 0, tg: o.tg || 0, sweep: o.sweep || 0, osc: o.osc || 0, of: o.of || 0, op: o.op || 0, src: o.src || 0, rg: o.rg || 0, vk: o.vk || 0 };
+    life: (o.life || 5) / v, arm: o.cont ? 0 : Math.max(o.arm || 0, 0.2), T0: CUR_T, rad: k.r, k: o.k, dmg: (o.dmg || k.dmg) * TUNE.bulletMul * dm, hit: Infinity, st: o.st || 0, so: S.off - (o.stBase || 0), rv: o.rv || 0, tg: o.tg || 0, sweep: o.sweep || 0, osc: o.osc || 0, of: o.of || 0, op: o.op || 0, src: o.src || 0, rg: o.rg || 0, vk: o.vk || 0 };
   S.bb.push(b);
   return b;
 }
@@ -339,7 +339,7 @@ function emitHands(t, dl, rv, B0, hands = HANDS) {
     const th = -Math.PI / 2 + handW(h) * (t + dl - B0);
     for (let r = h.r0; r <= h.r1 + 1e-6; r += HAND_DR) {
       if (h.gaps.some(([a, z]) => r > a && r < z)) continue;
-      emitB(t, { cx: 0, cy: 0, r0: r, th, w: handW(h), k: 'clk', dl, life: HAND_SEG, rv, tg: 1, raw: 1 });
+      emitB(t, { cx: 0, cy: 0, r0: r, th, w: handW(h), k: 'clk', dl, life: HAND_SEG, rv, tg: 1, raw: 1, cont: !dl });   // later segments continue the blade: no spawn grace
     }
   }
 }
@@ -348,7 +348,7 @@ function emitPendulum(t, dl, rv, P0, up = 0) {
   const gap = up ? [99, 99] : PEND.gap, r1 = up ? 7.4 : PEND.r1;   // the upper pendulum is short: step past its tip
   for (let r = PEND.r0; r <= r1 + 1e-6; r += 0.46) {
     if (r > gap[0] && r < gap[1]) continue;
-    emitB(t, { cx: 0, cy: 0, r0: r, th: up ? -Math.PI / 2 : Math.PI / 2, osc: PEND.amp, of: om, op, k: 'pend', vk: r + 0.46 > r1 + 1e-6 ? 'bob' : 'link', dl, life: HAND_SEG, rv, tg: 1, raw: 1 });
+    emitB(t, { cx: 0, cy: 0, r0: r, th: up ? -Math.PI / 2 : Math.PI / 2, osc: PEND.amp, of: om, op, k: 'pend', vk: r + 0.46 > r1 + 1e-6 ? 'bob' : 'link', dl, life: HAND_SEG, rv, tg: 1, raw: 1, cont: !dl });
   }
 }
 // a set piece's segments: a ghost 1.5 s ahead of its start, then seamless tiles until it (or midnight) ends
@@ -757,7 +757,7 @@ function collide(T, wt) {
   for (let i = 0; i < S.al.length; i++) {
     const b = S.al[i]; if (T < b.rv || b.hit !== Infinity || wt < b.t0 + b.arm) continue;
     const dx = S.alx[i] - p.x, dy = S.aly[i] - p.y, rr = b.rad + P_R + S.botPad;
-    if (dx * dx + dy * dy < rr * rr) { b.hit = wt; if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: b.k, age: T - Math.max(b.T0 + b.dl, b.rv || 0), sweep: b.sweep }); hurt(T, wt, b.dmg); if (S.dead) return; }
+    if (dx * dx + dy * dy < rr * rr) { b.hit = wt; if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: b.k, age: T - Math.max(b.T0 + b.dl, b.rv || 0), sweep: b.sweep }); hurt(T, wt, b.dmg); return; }   // one hit per instant, then the brief immunity
   }
   for (const l of S.lobs) if (!l.done && wt >= l.tl) { l.done = true; if (Math.hypot(p.x - l.x1, p.y - l.y1) < (l.kind === 'glass' ? 0.9 : 0.7) + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'bomb:' + l.kind, age: wt - l.t0 }); hurt(T, wt, 150 * TUNE.bulletMul); if (S.dead) return; } }
   for (const z of S.pillars) if (!z.done && wt >= z.ti) { z.done = true; if (Math.hypot(p.x - z.x, p.y - z.y) < z.r + P_R + S.botPad) { if (S.log) S.log.push({ T, ph: phaseOf(T) + 1, k: 'pillar', age: wt - z.t0 }); hurt(T, wt, 180 * TUNE.bulletMul); if (S.dead) return; } }
