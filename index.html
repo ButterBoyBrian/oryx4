@@ -1637,7 +1637,7 @@ function buildSidebarBg() {
 let CAM = { x: 0, y: 0, z: 1, sx: 0, sy: 0 };
 // render interpolation: the simulation steps at 60 Hz; faster screens draw between the last two steps
 const RI = { a: 1, S: null, wt: 0, cx: 0, cy: 0, cz: 1 }, RP = { x: 0, y: 0 };
-let BPX = new Float32Array(1024), BPY = new Float32Array(1024);
+let BPX = new Float32Array(1024), BPY = new Float32Array(1024), BPT = new Float32Array(1024);
 const w2s = (x, y) => [GW / 2 + (x - CAM.x) * TILE * CAM.z + CAM.sx, GH * 0.54 + (y - CAM.y) * TILE * CAM.z + CAM.sy];
 function sprAt(ctx, img, x, y, s, rot = 0, alpha = 1, flip = 1, ax = 0.5, ay = 0.5) {
   if (rot === 0 && flip === 1) { ctx.globalAlpha = alpha; ctx.drawImage(img, x - img.width * ax * s, y - img.height * ay * s, img.width * s, img.height * s); ctx.globalAlpha = 1; return; }
@@ -1749,7 +1749,7 @@ function drawVoid(g, T, mid) {
     g.closePath(); g.fill(); g.stroke();
     g.fillStyle = '#05040a'; g.beginPath(); g.arc(0, 0, R * 0.45, 0, TAU); g.fill();
     g.strokeStyle = 'rgba(160,110,30,0.18)'; g.lineWidth = 3;
-    for (let k = 0; k < 6; k++) { const a = k * TAU / 6; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.45, Math.sin(a) * R * 0.45); g.lineTo(Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.95); g.stroke(); }
+    g.beginPath(); for (let k = 0; k < 6; k++) { const a = k * TAU / 6; g.moveTo(Math.cos(a) * R * 0.45, Math.sin(a) * R * 0.45); g.lineTo(Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.95); } g.stroke();   // spokes in one stroke
     g.restore();
   }
 }
@@ -2255,23 +2255,24 @@ const VK = { bell: { sc: 5, swing: 1 }, mark: { sc: 5.5, radial: 1 }, feather: {
   link: { sc: 5, radial: 1 }, bob: { sc: 5.2, radial: 1 }, rew: { sc: 5, trail: 1 } };
 function drawBullets(g, T, wt) {
   const al = S.al, n = al.length, z = CAM.z;
-  if (BPX.length < n) { BPX = new Float32Array(n * 2); BPY = new Float32Array(n * 2); }
-  for (let i = 0; i < n; i++) { bpos(al[i], wt); BPX[i] = BX; BPY[i] = BY; }
+  if (BPX.length < n) { BPX = new Float32Array(n * 2); BPY = new Float32Array(n * 2); BPT = new Float32Array(n * 2); }
+  const k0 = TILE * z, ox = GW / 2 - CAM.x * k0 + CAM.sx, oy = GH * 0.54 - CAM.y * k0 + CAM.sy;   // w2s, inlined
+  for (let i = 0; i < n; i++) { bpos(al[i], wt); BPX[i] = ox + BX * k0; BPY[i] = oy + BY * k0; BPT[i] = BTH; }
   // glow pass
   g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < n; i++) {
     const b = al[i]; if (T < b.rv && !b.tg) continue;
-    const [x, y] = w2s(BPX[i], BPY[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
+    const x = BPX[i], y = BPY[i]; if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], ga = T < b.rv ? 0.25 + 0.15 * Math.sin(T * 14) : 1;
     glowAt(g, k.glow, x, y, (b.k === 'orbW' ? 90 : b.k === 'sand' ? 34 : 64) * z, (b.k === 'sand' ? 0.35 : 0.5) * ga);
   }
   g.globalCompositeOperation = 'source-over';
   for (let i = 0; i < n; i++) {
     const b = al[i]; if (T < b.rv && !b.tg) continue;
-    const [x, y] = w2s(BPX[i], BPY[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
+    const x = BPX[i], y = BPY[i]; if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], v = b.vk ? VK[b.vk] : k, alpha = T < b.rv ? 0.3 + 0.15 * Math.sin(T * 14) : 1;
     let rot = 0;
-    if (v.orient) rot = bhead(b, wt); else if (v.spin) rot = (wt - b.t0) * v.spin; else if (v.radial) { bpos(b, wt); rot = BTH; } else if (v.swing) rot = 0.35 * Math.sin((wt - b.t0) * 8 + b.th * 5);
+    if (v.orient) rot = bhead(b, wt); else if (v.spin) rot = (wt - b.t0) * v.spin; else if (v.radial) rot = BPT[i]; else if (v.swing) rot = 0.35 * Math.sin((wt - b.t0) * 8 + b.th * 5);
     if (v.trail) for (let j = 3; j >= 1; j--) { bpos(b, wt - j * 0.07); const [tx, ty] = w2s(BX, BY); sprAt(g, SPR.b[b.k], tx, ty, k.sc * z * (1 - j * 0.1), 0, alpha * (0.55 - j * 0.14)); }
     sprAt(g, SPR.b[b.vk || b.k], x, y, v.sc * z, rot, alpha);
     if (b.rv && T - b.rv < 0.15) { g.globalCompositeOperation = 'lighter'; glowAt(g, 'w', x, y, 120 * z, 1 - (T - b.rv) / 0.15); g.globalCompositeOperation = 'source-over'; }
