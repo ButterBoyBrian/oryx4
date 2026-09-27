@@ -29,7 +29,7 @@ const SPLITS = ['Tick', 'Rewind', 'Stasis', 'Eleventh Hour', 'Midnight', 'Final 
 const PHASES = [{ key: 'p1', num: 'I', name: 'TICK' }, { key: 'p2', num: 'II', name: 'REWIND' }, { key: 'p3', num: 'III', name: 'STASIS' }, { key: 'p4', num: 'IV', name: 'ELEVENTH HOUR' }, { key: 'p5', num: 'V', name: 'MIDNIGHT' }];
 
 const BOSS = 'Oryx the Mad God IV';
-const NW = 'Wizard';   // the player's name on the nameplate, chat and results
+const NW = 'NoobWaf‌fle';
 const CHAT = [];
 function say(T, who, text) { CHAT.push([T, who, text]); }
 // boss lines, relative to the start of each phase (only spoken while that phase is still running)

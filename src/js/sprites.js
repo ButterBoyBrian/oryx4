@@ -85,7 +85,7 @@ function glowSprite(color, size = 64, inner = 0) {
   return c;
 }
 
-// ---------- the player: a yellow-robed wizard (original design) ----------
+// ---------- the runner: NoobWaffle, a yellow-robed wizard (original design) ----------
 // Two poses per facing alternate on every shot: staff held upright (rest) and staff thrust at the target (cast).
 const PAL_NINJA = {
   Y: '#ffd23f', y: '#c98a14', o: '#fff2a8', H: '#7a3fc4', h: '#4b2380', S: '#f6cda6', E: '#120e18',
@@ -93,20 +93,20 @@ const PAL_NINJA = {
 };
 const NINJA = {
   side: [
-    ['..oY......', '.oYYY.....', 'hHHHHH.c..', '..SSE..C..', '..YKYYYB..', '..YKYY.B..', '..yYYy.B..', '...y.y.B..'],
-    ['..oY......', '.oYYY.....', 'hHHHHH.c..', '..SSE..C..', '..YKYYYB..', '..YKYY.B..', '.yYYYYyB..', '..y...yB..'],
+    ['..oY......', '.oYYY.....', 'hHHHHH.c..', '..SSE..C..', '..YYYYYB..', '..YYYY.B..', '..yYYy.B..', '...y.y.B..'],
+    ['..oY......', '.oYYY.....', 'hHHHHH.c..', '..SSE..C..', '..YYYYYB..', '..YYYY.B..', '.yYYYYyB..', '..y...yB..'],
   ],
-  sideAtk: ['..oY......', '.oYYY.....', 'hHHHHH....', '..SSE.....', '..YKYYBBGc', '..YKYY...C', '..yYYy....', '...y.y....'],
+  sideAtk: ['..oY......', '.oYYY.....', 'hHHHHH....', '..SSE.....', '..YYYYBBGc', '..YYYY...C', '..yYYy....', '...y.y....'],
   front: [
-    ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE.c', '.oYKYYYC', '.YYKYY.B', '.yYYYYyB', '..y..y.B'],
-    ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE.c', '.oYKYYYC', '.YYKYY.B', '.yYYYYyB', '.y....yB'],
+    ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE.c', '.oYYYYYC', '.YYYYY.B', '.yYYYYyB', '..y..y.B'],
+    ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE.c', '.oYYYYYC', '.YYYYY.B', '.yYYYYyB', '.y....yB'],
   ],
-  frontAtk: ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE..', '.oYKYYY.', '.YYKYYYB', '.yYYYYyG', '..y..yCc'],
+  frontAtk: ['...oY...', '..oYYY..', '.hHHHHh.', '..ESSE..', '.oYYYYY.', '.YYYYYYB', '.yYYYYyG', '..y..yCc'],
   back: [
-    ['...Yo...', '..YYYo..', '.hHHHHh.', 'c.yYYy..', 'CYYKYYo.', 'BYYKYYY.', 'ByYYYYy.', 'B.y..y..'],
-    ['...Yo...', '..YYYo..', '.hHHHHh.', 'c.yYYy..', 'CYYKYYo.', 'BYYKYYY.', 'ByYYYYy.', 'By....y.'],
+    ['...Yo...', '..YYYo..', '.hHHHHh.', 'c.yYYy..', 'CYYYYYo.', 'BYYYYYY.', 'ByYYYYy.', 'B.y..y..'],
+    ['...Yo...', '..YYYo..', '.hHHHHh.', 'c.yYYy..', 'CYYYYYo.', 'BYYYYYY.', 'ByYYYYy.', 'By....y.'],
   ],
-  backAtk: ['c..Yo...', 'C.YYYo..', 'GhHHHHh.', 'B.yYYy..', 'BYYKYYo.', '.YYKYYY.', '.yYYYYy.', '..y..y..'],
+  backAtk: ['c..Yo...', 'C.YYYo..', 'GhHHHHh.', 'B.yYYy..', 'BYYYYYo.', '.YYYYYY.', '.yYYYYy.', '..y..y..'],
 };
 
 // ---------- boss: Oryx IV "The Unwound" (original design) ----------
@@ -337,10 +337,14 @@ function shardPX() { const p = new PX(8, 3); p.rect(0, 1, 8, 1, '#e6f8ff'); p.re
 function boltPX() {
   return gridPX(['...W...', '.WWCW..', 'WCccCWW', '.WWCW..', '...W...'], { W: '#f4f8ff', C: '#a855f7', c: '#f2ddff' });
 }
-function spellOrbPX(n) {   // the ability: a violet orb with a white sparkle
-  const p = new PX(n, n), c = n / 2;
-  p.disc(c, c, n / 2 - 0.4, '#6d28d9'); p.disc(c, c, n / 2 - 1.6, '#a855f7'); p.disc(c - 0.8, c - 0.8, n / 5, '#f2ddff');
-  p.each((px, py) => (Math.abs(px - c) < 0.6 && Math.abs(py - c) < n / 2 - 0.5) || (Math.abs(py - c) < 0.6 && Math.abs(px - c) < n / 2 - 0.5) ? '#ffffff' : 0);
+function shurikenPX(n) {   // the ability: an arcane ninja star, four swept steel blades around a violet core
+  const p = new PX(n, n), c = n / 2, R = n / 2 - 0.2, at = (a, r) => [c + Math.cos(a) * r, c + Math.sin(a) * r];
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2 - Math.PI / 2;
+    p.poly([at(a, R), at(a + 1.3, R * 0.36), at(a - 0.5, R * 0.3)], '#dfe6f2');
+    p.poly([at(a, R), at(a + 1.3, R * 0.36), at(a + 0.35, R * 0.34)], '#8e9ab3');
+  }
+  p.disc(c, c, R * 0.36, '#a855f7'); p.disc(c - R * 0.1, c - R * 0.1, R * 0.12, '#f2ddff'); p.disc(c, c, R * 0.14, '#1a0830');
   return p;
 }
 function slashPX() { // katana wave, points +x
@@ -431,8 +435,8 @@ function buildSprites() {
     jewel: jewelPX().canvas('#3a2206'), link: linkPX().canvas('#1a1206'), bob: bobPX().canvas('#1a1206'),
     slash: slashPX().canvas(null),
     bolt: boltPX().canvas('#1a0830'),
-    star: spellOrbPX(9).canvas('#1a0830'),
-    bigStar: spellOrbPX(15).canvas('#1a0830'),
+    star: shurikenPX(11).canvas('#1a0830'),
+    bigStar: shurikenPX(17).canvas('#1a0830'),
   };
   SPR.bag = bagPX('#ffffff', '#c8ccd8').canvas();
   SPR.cuckoo = gridPX(['....rR......', '...rWWd.....', '..ddWEdd....', '.dddddddYY..', 'ddGGGddddY..', 'dGgggGddd...', '.dGGGddd....', '..ddddd.....', '...Y..Y.....'],
@@ -443,7 +447,7 @@ function buildSprites() {
   for (const k in ICONS) SPR.icon[k] = gridPX(ICONS[k][0], ICONS[k][1]).canvas();
   SPR.icon.star = starIconPX().canvas();
   SPR.icon.staff = gridPX(['.......cC.', '......CcCc', '.......CC.', '......G...', '.....B....', '....B.....', '...B......', '..B.......', '.b........', 'b.........'], { B: '#7a4a24', b: '#4a2a12', C: '#b36bff', c: '#f2ddff', G: '#e6b93a' }).canvas();
-  SPR.icon.spell = spellOrbPX(10).canvas();
+  SPR.icon.spell = shurikenPX(12).canvas('#1a0830');
   SPR.icon.robe = gridPX(['...HHHH...', '..YYooYY..', '.YYYooYYY.', 'YYYKKKKYYY', '.YYYYYYYY.', '.YYYYYYYY.', '.yYYYYYYy.', '.yyyyyyyy.', '..........', '..........'], { Y: '#ffd23f', y: '#c98a14', o: '#fff2a8', H: '#7a3fc4', K: '#7a3fc4' }).canvas();
   SPR.glow = {};
   const gc = { c: 'rgba(60,220,255,0.9)', m: 'rgba(255,60,160,0.9)', g: 'rgba(255,190,60,0.9)', w: 'rgba(255,255,255,0.95)', p: 'rgba(190,110,255,0.95)', r: 'rgba(255,60,80,0.9)' };

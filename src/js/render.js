@@ -1,13 +1,15 @@
 'use strict';
 // ================= renderer =================
-let GAME, GX, TMP, TX2, FLOOR, FLOOR_C, OVER, OVX, OVD, OVB, ROOM, ROOM_C, NEB, STARS = [], SIDE_BG, MINI;
+let GX, TMP, TX2, FLOOR, FLOOR_C, OVER, OVX, OVD, OVB, ROOM, ROOM_C, NEB, STARS = [], SIDE_BG, MINI;
+// render caches (built once): vignettes, the midnight spotlight falloff, and the dial (rebuilt when a hand moves)
+let VIG_MOOD, VIG_LOW, DARK_SPOT, ARENA, ARX, ARENA_KEY = '';
 const BOSS_S = 6; // px per boss texel at zoom 1
 const COL = { boss: '#ff9d3b', nw: '#ffe14d', sys: '#ff6b6b', gold: '#ffd23f', ench: '#c77dff', hp: '#3fd46a', mp: '#4b7bff' };
 
 function initRender() {
-  GAME = mkCanvas(GW, GH); GX = GAME.getContext('2d');
+  GX = CTX;   // the game view is drawn straight onto the screen (the sidebar covers anything past GW)
   TMP = mkCanvas(GW, GH); TX2 = TMP.getContext('2d');
-  buildFloor(); buildRoom(); buildNebula(); buildSidebarBg();
+  buildFloor(); buildRoom(); buildNebula(); buildSidebarBg(); buildCaches();
   const rng = mulberry32(99);
   for (let i = 0; i < 420; i++) STARS.push({ x: rng() * 3000 - 700, y: rng() * 2200 - 560, s: rng() < 0.12 ? 3 : rng() < 0.5 ? 2 : 1, p: 0.15 + rng() * 0.35, tw: rng() * 6, c: rng() < 0.2 ? '#ffcfd6' : rng() < 0.4 ? '#cfe6ff' : '#ffffff' });
   SPR.bossBlack = tinted(SPR.boss[0], '#000000', 1);
@@ -16,6 +18,14 @@ function initRender() {
   SPR.b.clk = SPR.b.hand; SPR.b.pend = SPR.b.gear; SPR.b.rew = SPR.b.orbM;
   SPR.bossRim = tinted(SPR.boss[0], '#b01d34', 1); SPR.cloakRim = tinted(SPR.cloak[0], '#b01d34', 1);
   SPR.swordBlack = tinted(SPR.sword[0], '#000000', 1); SPR.swordRim = tinted(SPR.sword[0], '#b01d34', 1);
+}
+
+function buildCaches() {
+  const radial = (w, h, cx, cy, r0, r1, c0, c1) => { const c = mkCanvas(w, h), x = c.getContext('2d'), g = x.createRadialGradient(cx, cy, r0, cx, cy, r1); g.addColorStop(0, c0); g.addColorStop(1, c1); x.fillStyle = g; x.fillRect(0, 0, w, h); return c; };
+  VIG_MOOD = radial(GW, GH, GW / 2, GH / 2, 420, 1050, 'rgba(0,0,0,0)', 'rgba(0,0,0,0.5)');
+  VIG_LOW = radial(GW, GH, GW / 2, GH / 2, 300, 900, 'rgba(255,0,0,0)', 'rgba(200,0,20,1)');   // drawn at the pulse's alpha
+  DARK_SPOT = radial(256, 256, 128, 128, 128 * 180 / 620, 128, 'rgba(3,1,10,0)', 'rgba(3,1,10,1)');   // midnight spotlight, drawn at the darkness alpha
+  ARENA = mkCanvas(FLOOR.width, FLOOR.height); ARX = ARENA.getContext('2d');
 }
 
 // ---------- prerendered floors ----------
@@ -120,8 +130,12 @@ function buildSidebarBg() {
 
 // ---------- helpers ----------
 let CAM = { x: 0, y: 0, z: 1, sx: 0, sy: 0 };
+// render interpolation: the simulation steps at 60 Hz; faster screens draw between the last two steps
+const RI = { a: 1, S: null, wt: 0, cx: 0, cy: 0, cz: 1 }, RP = { x: 0, y: 0 };
+let BPX = new Float32Array(1024), BPY = new Float32Array(1024);
 const w2s = (x, y) => [GW / 2 + (x - CAM.x) * TILE * CAM.z + CAM.sx, GH * 0.54 + (y - CAM.y) * TILE * CAM.z + CAM.sy];
 function sprAt(ctx, img, x, y, s, rot = 0, alpha = 1, flip = 1, ax = 0.5, ay = 0.5) {
+  if (rot === 0 && flip === 1) { ctx.globalAlpha = alpha; ctx.drawImage(img, x - img.width * ax * s, y - img.height * ay * s, img.width * s, img.height * s); ctx.globalAlpha = 1; return; }
   const c = Math.cos(rot) * s, sn = Math.sin(rot) * s;
   ctx.setTransform(c * flip, sn * flip, -sn, c, x, y);
   ctx.globalAlpha = alpha;
@@ -170,7 +184,6 @@ function renderFrame(f) {
   if (T < TL.lobby) { drawColdOpen(x, T); return; }
   if (T >= TL.credits) { drawCredits(x, T); return; }
   drawGameView(T);
-  x.drawImage(GAME, 0, 0);
   drawSidebar(x, T);
   drawOverlays(x, T);
   if (T < TL.lobby + 0.6) { x.fillStyle = `rgba(0,0,0,${1 - sat((T - TL.lobby) / 0.6)})`; x.fillRect(0, 0, W, H); }
@@ -179,21 +192,25 @@ function renderFrame(f) {
 
 // ---------- game viewport ----------
 function drawGameView(T) {
-  const g = GX, wt = S.wt, wf = S.wf;
+  const a = RI.S === S ? RI.a : 1, g = GX, wf = S.wf, wt = lerp(RI.wt, S.wt, a), pf = Math.max(0, wf - 1);
+  RP.x = lerp(S.hx[pf], S.hx[wf], a); RP.y = lerp(S.hy[pf], S.hy[wf], a);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.imageSmoothingEnabled = false; g.filter = 'none';
   if (T < TL.run) { drawLobby(g, T); return; }
   const [sx, sy] = shake(T);
-  CAM = { x: S.cam.x, y: S.cam.y, z: S.cam.z, sx, sy };
+  CAM = { x: lerp(RI.cx, S.cam.x, a), y: lerp(RI.cy, S.cam.y, a), z: lerp(RI.cz, S.cam.z, a), sx, sy };
+  if (a === 1) Object.assign(CAM, { x: S.cam.x, y: S.cam.y, z: S.cam.z });
   const mid = T >= TL.mn ? smooth((T - TL.mn) / 3.5) : 0;
   drawVoid(g, T, mid);
   drawArena(g, T, wt, mid);
   drawFloorFx(g, T, wt);
+  drawSafeLanes(g, T);
   drawRangeRing(g, T, wt, wf);
   drawShadows(g, T, wt);
   drawEntities(g, T, wt, wf);
   drawDarkness(g, T, wt, wf, mid);
   drawBullets(g, T, wt);
   drawParticles(g, T, wt);
+  drawTargets(g, T);
   drawHitbox(g, T, wf);
   drawNumbers(g, T, wt, wf);
   drawBubble(g, T);
@@ -271,11 +288,12 @@ function drawArena(g, T, wt, mid) {
   const C = FLOOR_C, N = FLOOR.width, s = TEX * CAM.z;
   const [ox, oy] = w2s(0, 0);
   g.imageSmoothingEnabled = false;
-  g.drawImage(FLOOR, ox - C * s, oy - C * s, N * s, N * s);
-  // clock hands overlay (texel-accurate)
+  // clock hands overlay (texel-accurate), composited with the floor into ARENA only when a hand has moved
+  const [hr, mn] = clockHands(T, wt), key = Math.round(hr * 2000) + ',' + Math.round(mn * 2000);
+  if (key !== ARENA_KEY) {
+  ARENA_KEY = key;
   OVB.fill(0);
-  const [hr, mn] = clockHands(T, wt);
-  const dark = u32('#1a1204'), gold = u32('#d1a12a'), hi = u32('#ffdc72'), red = u32('#e0283f');
+  const dark = u32('#0b0f1a'), gold = u32('#2b3650'), hi = u32('#3c4a6a'), red = u32('#5b6f99');   // slate blue: background, unlike the gold bullet hands
   const hand = (a, len, w) => {
     const ex = C + Math.sin(a) * len * 8, ey = C - Math.cos(a) * len * 8;
     thickLine(OVB, N, C, C, ex, ey, w + 1, dark); thickLine(OVB, N, C, C, ex, ey, w, gold); thickLine(OVB, N, C, C, ex, ey, Math.max(0, w - 1), hi);
@@ -285,7 +303,9 @@ function drawArena(g, T, wt, mid) {
   hand(mn, 9.4, 1); hand(hr, 6.4, 2);
   for (let j = -4; j <= 4; j++) for (let k = -4; k <= 4; k++) if (j * j + k * k <= 16) OVB[(C + k) * N + C + j] = (j * j + k * k <= 5) ? red : gold;
   OVX.putImageData(OVD, 0, 0);
-  g.globalAlpha = 0.92; g.drawImage(OVER, ox - C * s, oy - C * s, N * s, N * s); g.globalAlpha = 1;
+  ARX.clearRect(0, 0, N, N); ARX.drawImage(FLOOR, 0, 0); ARX.globalAlpha = 0.92; ARX.drawImage(OVER, 0, 0); ARX.globalAlpha = 1;
+  }
+  g.drawImage(ARENA, ox - C * s, oy - C * s, N * s, N * s);
   // glowing numerals in midnight (the chime count)
   if (T >= TL.p4) {
     const c = T >= TL.m12 ? 12 : Math.min(11, Math.floor((T - TL.p4) / CHIME_DT));
@@ -315,6 +335,26 @@ function drawArena(g, T, wt, mid) {
     for (let k = 0; k < 60; k++) { const an = k * TAU / 60, L = k % 5 === 0 ? 16 : 7; g.save(); g.rotate(an); g.fillRect(-2, -R, 4, L); g.restore(); }
     g.restore();
   }
+}
+// the final seconds: light-green rings mark the radii where every clock hand has a gap (or doesn't reach);
+// they flash when a hand is about to sweep past you
+function drawSafeLanes(g, T) {
+  if (S.survHands === undefined || T < S.survHands - 1.5 || T >= T_KILL || S.dead) return;
+  const hands = survHands(S.survW), cut = [];
+  for (const h of hands) { let r = h.r0; for (const [a, z] of h.gaps) { cut.push([r, a]); r = z; } cut.push([r, h.r1]); }
+  cut.sort((a, b) => a[0] - b[0]);
+  const safe = []; let r = BODY_R;
+  for (const [a, z] of cut) { if (a > r + 0.3) safe.push([r, a]); r = Math.max(r, z); }
+  if (r < 11.9) safe.push([r, 12.1]);
+  const pa = Math.atan2(S.p.y, S.p.x), soon = T < S.survHands + 0.5 || hands.some(h => {   // the hands appearing, or a blade about to cross your angle
+    const w = handW(h), th = -Math.PI / 2 + w * (T - S.survHands), d = ((pa - th) * Math.sign(w) % TAU + TAU) % TAU;
+    return d / Math.abs(w) < 1.0 && Math.hypot(S.p.x, S.p.y) < h.r1 + 0.3;
+  });
+  const a = soon ? 0.6 + 0.4 * Math.sin(T * 18) : 0.45, [cx, cy] = w2s(0, 0), k = TILE * CAM.z;
+  g.fillStyle = `rgba(125,255,176,${0.06 + 0.06 * (soon ? a : 0)})`;
+  for (const [r0, r1] of safe) { g.beginPath(); g.arc(cx, cy, r1 * k, 0, TAU); g.arc(cx, cy, r0 * k, 0, TAU, true); g.fill(); }
+  g.strokeStyle = `rgba(125,255,176,${a})`; g.lineWidth = soon ? 4 : 3;
+  for (const [r0, r1] of safe) for (const rr of [r0, r1]) { g.beginPath(); g.arc(cx, cy, rr * k, 0, TAU); g.stroke(); }
 }
 function drawFloorFx(g, T, wt) {
   // entry warnings for attacks that come from outside the arena: glowing dashes on the rim, one per bullet
@@ -359,7 +399,7 @@ function drawShadows(g, T, wt) {
   const b = S.boss;
   if (bossVisible(T)) { g.globalAlpha = T < TL.land ? sat((T - TL.run) / 2) * 0.8 : 1; sh(b.x, b.y + 3.3, 5.2, 1.3); g.globalAlpha = 1; }
   const wf = S.wf;
-  sh(S.hx[wf], S.hy[wf] + 0.42, 0.8, 0.25);
+  sh(RP.x, RP.y + 0.42, 0.8, 0.25);
 }
 const bossVisible = T => T >= TL.run && T < T_KILL + 2.45;
 
@@ -547,6 +587,31 @@ function drawEcho(g, T, e, p) {
   txt(g, e.name, cx, Math.max(84, oy - 8), 17, e.id === 'castle' ? '#9cc8ff' : e.id === 'cellar' ? '#ff6477' : '#ffd76a', { sw: 4 });
   if (T - e.T < 0.5) { g.globalCompositeOperation = 'lighter'; glowAt(g, 'w', cx, cy, 400 * (T - e.T) * CAM.z, 1 - (T - e.T) * 2); g.globalCompositeOperation = 'source-over'; }
 }
+// minions you have to shoot: summoning glyphs before the sentinels rise, pulsing brackets on each live one,
+// and arrows at the screen edge pointing to any that are off-screen
+function drawTargets(g, T) {
+  const z = CAM.z, L = [];
+  if (T >= TL.sent - 1.8 && T < TL.sent - 0.2) for (const [px, py] of SENT_POS) {
+    const [x, y] = w2s(px, py), u = (T - TL.sent + 1.8) / 1.6, r = (70 - 30 * u) * z;
+    g.globalAlpha = 0.5 + 0.5 * Math.sin(T * 14); g.strokeStyle = '#ff2442'; g.lineWidth = 4;
+    g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke(); g.beginPath(); g.arc(x, y, r * 0.55, T * 4, T * 4 + TAU * 0.7); g.stroke();
+    txt(g, '!', x, y, 34, '#ff2442', { f: 'P2P', sw: 5, w: 400 }); g.globalAlpha = 1;
+  }
+  for (const s of S.sent) if (T >= s.T && s.deadT === Infinity) L.push([s.x, s.y, 58, '#ff2442']);
+  for (const c of S.cuckoos) if (T >= c.T + 0.8 && c.deadT === Infinity && T < T_KILL) L.push([c.x, c.y, 42, '#ff9a2a']);
+  for (const [wx, wy, r0, col] of L) {
+    const [x, y] = w2s(wx, wy), r = (r0 + 5 * Math.sin(T * 8)) * z, a = T * 1.5;
+    if (x < -20 || y < -20 || x > GW + 20 || y > GH + 20) {   // off-screen: an arrow on the edge
+      const ex = clamp(x, 40, GW - 40), ey = clamp(y, 120, GH - 40), th = Math.atan2(y - ey, x - ex);
+      g.setTransform(Math.cos(th), Math.sin(th), -Math.sin(th), Math.cos(th), ex, ey);
+      g.fillStyle = col; g.strokeStyle = '#000'; g.lineWidth = 3; g.beginPath(); g.moveTo(18, 0); g.lineTo(-12, -14); g.lineTo(-12, 14); g.closePath(); g.stroke(); g.fill();
+      g.setTransform(1, 0, 0, 1, 0, 0); continue;
+    }
+    g.strokeStyle = col; g.lineWidth = 4; g.globalAlpha = 0.75 + 0.25 * Math.sin(T * 8);
+    for (let k = 0; k < 4; k++) { const b = a + k * Math.PI / 2; g.beginPath(); g.arc(x, y, r, b - 0.35, b + 0.35); g.stroke(); }
+    g.globalAlpha = 1;
+  }
+}
 function drawCuckoo(g, T, c) {
   const u = sat((T - c.T) / 0.8), [x, y] = w2s(c.x, c.y + Math.sin(T * 6 + c.h) * 0.08), s = 5 * CAM.z * (0.3 + 0.7 * u), flip = c.vx < 0 ? -1 : 1;
   g.globalCompositeOperation = 'lighter'; glowAt(g, 'r', x, y, (u < 1 ? 240 : 110) * CAM.z, u < 1 ? 0.3 + 0.7 * (1 - u) : 0.35); g.globalCompositeOperation = 'source-over';
@@ -595,7 +660,7 @@ function playerSprite(dir, face, walk, atk) {
   return [atk ? n.backAtk : n.back[fr], 1];
 }
 function drawPlayer(g, T, wt, wf) {
-  const px = S.hx[wf], py = S.hy[wf], s = TEX * CAM.z;
+  const px = RP.x, py = RP.y, s = TEX * CAM.z;
   const atk = S.T - S.hatk[wf] < 0.075 && T < T_KILL;   // cast pose alternates with the rest pose on every shot
   const [img, flip] = playerSprite(S.hdir[wf], S.hface[wf], S.hwalk[wf], atk);
   const [x, y] = w2s(px, py);
@@ -609,9 +674,10 @@ function drawPlayer(g, T, wt, wf) {
   }
   g.globalCompositeOperation = 'lighter'; glowAt(g, 'g', x, y + 0.3 * TILE * CAM.z, 90 * CAM.z, 0.22); g.globalCompositeOperation = 'source-over';
   const hurt = S.phits.length && S.phits[S.phits.length - 1].wt <= wt && wt - S.phits[S.phits.length - 1].wt < 0.08;
-  g.setTransform(s * flip, 0, 0, s, x, y); g.drawImage(img, -5, -img.height * 0.6); g.setTransform(1, 0, 0, 1, 0, 0);
+  const ax = img.width === 10 ? 4.5 : 4;   // the hitbox sits on the torso centre (columns 2-6 side-on, 1-6 front/back)
+  g.setTransform(s * flip, 0, 0, s, x, y); g.drawImage(img, -ax, -img.height * 0.6); g.setTransform(1, 0, 0, 1, 0, 0);
   if (atk) { const tip = [w2s(px + Math.cos(S.p.aim) * 0.6, py - 0.25 + Math.sin(S.p.aim) * 0.6)][0]; g.globalCompositeOperation = 'lighter'; glowAt(g, 'p', tip[0], tip[1], 70 * CAM.z, 0.7); g.globalCompositeOperation = 'source-over'; }   // cast flash
-  if (hurt) { g.setTransform(s * flip, 0, 0, s, x, y); g.globalAlpha = 0.5; g.drawImage(tintCache(img), -5, -img.height * 0.6); g.globalAlpha = 1; g.setTransform(1, 0, 0, 1, 0, 0); }
+  if (hurt) { g.setTransform(s * flip, 0, 0, s, x, y); g.globalAlpha = 0.5; g.drawImage(tintCache(img), -ax, -img.height * 0.6); g.globalAlpha = 1; g.setTransform(1, 0, 0, 1, 0, 0); }
   // hp / mp bars under the sprite
   const bw = 62 * CAM.z, by = y + 0.5 * TILE * CAM.z;
   const hp = S.hhp[wf] / P_MAXHP, mp = S.hmp[wf] / P_MAXMP;
@@ -622,7 +688,7 @@ function drawPlayer(g, T, wt, wf) {
 // katana reach: a faint dashed ring around the slash origin, gold while the weak point is within reach
 function drawRangeRing(g, T, wt, wf) {
   if (S.dead || T < TL.land || T >= T_KILL) return;
-  const ox = S.hx[wf], oy = S.hy[wf] - 0.25, [x, y] = w2s(ox, oy), R = PK.slash.range * TILE * CAM.z;
+  const ox = RP.x, oy = RP.y - 0.25, [x, y] = w2s(ox, oy), R = PK.slash.range * TILE * CAM.z;
   const w = wpPos(T, wt, S.boss), inReach = Math.hypot(w.x - ox, w.y - oy) - WP_R <= PK.slash.range && bossVulnerable(T);
   g.save(); g.setLineDash([14, 10]); g.lineDashOffset = -T * 12;
   g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(x, y, R, 0, TAU); g.stroke();
@@ -632,12 +698,9 @@ function drawRangeRing(g, T, wt, wf) {
 // the player's real hitbox is a single point; a small dot above the bullets shows exactly where it is
 function drawHitbox(g, T, wf) {
   if (S.dead || T >= T_KILL) return;
-  const [x, y] = w2s(S.hx[wf], S.hy[wf]), k = 0.75 + 0.25 * Math.sin(T * 6);
-  g.globalAlpha = 0.35; g.strokeStyle = '#ffffff'; g.lineWidth = 1.5;
-  g.beginPath(); g.arc(x, y, 9, 0, TAU); g.stroke();
-  g.globalAlpha = k; g.fillStyle = '#b01d34'; g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill();
-  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 2.2, 0, TAU); g.fill();
-  g.globalAlpha = 1;
+  const [sx, sy] = w2s(RP.x, RP.y), x = Math.round(sx), y = Math.round(sy);   // whole pixels: perfectly symmetric
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 5.5, 0, TAU); g.fill();
+  g.fillStyle = '#000000'; g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill();
 }
 // the Heart of the Hour: the only part of the boss that takes damage
 function drawWeakPoint(g, T, wt) {
@@ -680,18 +743,20 @@ const VK = { bell: { sc: 5, swing: 1 }, mark: { sc: 5.5, radial: 1 }, feather: {
   link: { sc: 5, radial: 1 }, bob: { sc: 5.2, radial: 1 }, rew: { sc: 5, trail: 1 } };
 function drawBullets(g, T, wt) {
   const al = S.al, n = al.length, z = CAM.z;
+  if (BPX.length < n) { BPX = new Float32Array(n * 2); BPY = new Float32Array(n * 2); }
+  for (let i = 0; i < n; i++) { bpos(al[i], wt); BPX[i] = BX; BPY[i] = BY; }
   // glow pass
   g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < n; i++) {
     const b = al[i]; if (T < b.rv && !b.tg) continue;
-    const [x, y] = w2s(S.alx[i], S.aly[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
+    const [x, y] = w2s(BPX[i], BPY[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], ga = T < b.rv ? 0.25 + 0.15 * Math.sin(T * 14) : 1;
     glowAt(g, k.glow, x, y, (b.k === 'orbW' ? 90 : b.k === 'sand' ? 34 : 64) * z, (b.k === 'sand' ? 0.35 : 0.5) * ga);
   }
   g.globalCompositeOperation = 'source-over';
   for (let i = 0; i < n; i++) {
     const b = al[i]; if (T < b.rv && !b.tg) continue;
-    const [x, y] = w2s(S.alx[i], S.aly[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
+    const [x, y] = w2s(BPX[i], BPY[i]); if (x < -60 || y < -60 || x > GW + 60 || y > GH + 60) continue;
     const k = BK[b.k], v = b.vk ? VK[b.vk] : k, alpha = T < b.rv ? 0.3 + 0.15 * Math.sin(T * 14) : 1;
     let rot = 0;
     if (v.orient) rot = bhead(b, wt); else if (v.spin) rot = (wt - b.t0) * v.spin; else if (v.radial) { bpos(b, wt); rot = BTH; } else if (v.swing) rot = 0.35 * Math.sin((wt - b.t0) * 8 + b.th * 5);
@@ -749,10 +814,10 @@ function drawDarkness(g, T, wt, wf, mid) {
   if (mid > 0 && T < T_KILL + 2.4) a = Math.max(a, 0.62 * mid);
   if (T >= T_KILL + 2.4) a = Math.max(0, 0.62 * (1 - sat((T - T_KILL - 2.4) / 1.5)));
   if (a <= 0) return;
-  const [px, py] = w2s(S.hx[wf], S.hy[wf]);
-  const grd = g.createRadialGradient(px, py, 180 * CAM.z, px, py, 620 * CAM.z);
-  grd.addColorStop(0, 'rgba(3,1,10,0)'); grd.addColorStop(1, `rgba(3,1,10,${a})`);
-  g.fillStyle = grd; g.fillRect(0, 0, GW, GH);
+  const [px, py] = w2s(RP.x, RP.y), D = Math.round(1240 * CAM.z), x0 = Math.round(px - D / 2), y0 = Math.round(py - D / 2);
+  g.globalAlpha = a; g.imageSmoothingEnabled = true; g.drawImage(DARK_SPOT, x0, y0, D, D); g.imageSmoothingEnabled = false;
+  g.fillStyle = '#03010a'; g.fillRect(0, 0, GW, Math.max(0, y0)); g.fillRect(0, y0 + D, GW, Math.max(0, GH - y0 - D));
+  g.fillRect(0, y0, Math.max(0, x0), D); g.fillRect(x0 + D, y0, Math.max(0, GW - x0 - D), D); g.globalAlpha = 1;
 }
 
 // ---------- floating numbers / text ----------
@@ -790,7 +855,7 @@ function drawNumbers(g, T, wt, wf) {
     txt(g, '-' + h.dmg, x, y, h.dmg > 300 ? 34 : 24, '#ff2a2a', { sw: 5 });
     g.globalAlpha = 1;
   }
-  const [px, py] = w2s(S.hx[wf], S.hy[wf]);
+  const [px, py] = w2s(RP.x, RP.y);
   for (const e of S.fx) {
     const tau = T - e.T; if (tau < 0 || tau > 1.6) continue;
     const a = tau < 1.1 ? 1 : 1 - (tau - 1.1) / 0.5;
@@ -808,7 +873,7 @@ function drawBubble(g, T) {
   const a = sat((T - last[0]) / 0.15) * (T - last[0] > 3.0 ? 1 - (T - last[0] - 3.0) / 0.4 : 1);
   g.globalAlpha = a;
   g.font = '700 22px Pix';
-  const lines = wrap(g, last[2], 460), w = Math.max(...lines.map(l => g.measureText(l).width)) + 36, h = lines.length * 28 + 22;
+  const lines = last.bl || (last.bl = wrap(g, last[2], 460)), w = last.bw || (last.bw = Math.max(...lines.map(l => g.measureText(l).width)) + 36), h = lines.length * 28 + 22;
   const y = clamp(y0, 82 + h, GH - 60);
   const bx = clamp(x - w / 2, 20, GW - w - 20);
   panel(g, bx, y - h, w, h, { bg: 'rgba(20,6,12,0.92)', bd: '#d8243c', r: 8 });
@@ -838,7 +903,7 @@ function postFx(g, T, wt) {
   if (T >= TL.rwA - 0.1 && T < TL.rwB + 0.25) {
     const k = T < TL.rwA ? (T - TL.rwA + 0.1) / 0.1 : T > TL.rwB ? 1 - (T - TL.rwB) / 0.25 : 1;
     TX2.setTransform(1, 0, 0, 1, 0, 0); TX2.clearRect(0, 0, GW, GH);
-    TX2.filter = 'sepia(0.55) saturate(1.4) hue-rotate(150deg) contrast(1.15)'; TX2.drawImage(GAME, 0, 0); TX2.filter = 'none';
+    TX2.filter = 'sepia(0.55) saturate(1.4) hue-rotate(150deg) contrast(1.15)'; TX2.drawImage(CV, 0, 0, GW, GH, 0, 0, GW, GH); TX2.filter = 'none';
     g.fillStyle = '#000'; g.fillRect(0, 0, GW, GH);
     for (let yb = 0; yb < GH; yb += 12) {
       const off = (hash(yb, Math.floor(T * 30)) - 0.5) * 38 * k + Math.sin(yb * 0.02 + T * 40) * 6 * k;
@@ -855,7 +920,7 @@ function postFx(g, T, wt) {
   }
   // time stop: inversion sphere then grayscale
   if (T >= TL.tsA && T < TL.tsB + 0.5) {
-    TX2.setTransform(1, 0, 0, 1, 0, 0); TX2.clearRect(0, 0, GW, GH); TX2.drawImage(GAME, 0, 0);
+    TX2.setTransform(1, 0, 0, 1, 0, 0); TX2.clearRect(0, 0, GW, GH); TX2.drawImage(CV, 0, 0, GW, GH, 0, 0, GW, GH);
     const [bx, by] = w2s(S.boss.x, S.boss.y);
     if (T < TL.tsB) {
       const u = (T - TL.tsA) / 0.55;
@@ -892,15 +957,8 @@ function postFx(g, T, wt) {
   const lo = fxSince('lowhp', T, 1.6);
   const hpFrac = S.hhp[S.wf] / P_MAXHP;
   const la = Math.max(lo ? 1 - (T - lo.T) / 1.6 : 0, hpFrac < 0.3 && T < T_KILL ? (0.3 - hpFrac) * 2.5 : 0);
-  if (la > 0) {
-    const grd = g.createRadialGradient(GW / 2, GH / 2, 300, GW / 2, GH / 2, 900);
-    grd.addColorStop(0, 'rgba(255,0,0,0)'); grd.addColorStop(1, `rgba(200,0,20,${0.55 * la * (0.75 + 0.25 * Math.sin(T * 12))})`);
-    g.fillStyle = grd; g.fillRect(0, 0, GW, GH);
-  }
-  // mood vignette
-  const vg = g.createRadialGradient(GW / 2, GH / 2, 420, GW / 2, GH / 2, 1050);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.5)');
-  g.fillStyle = vg; g.fillRect(0, 0, GW, GH);
+  if (la > 0) { g.globalAlpha = 0.55 * la * (0.75 + 0.25 * Math.sin(T * 12)); g.drawImage(VIG_LOW, 0, 0); g.globalAlpha = 1; }
+  g.drawImage(VIG_MOOD, 0, 0);   // mood vignette
 }
 
 // ---------- HUD inside the game view ----------
@@ -942,7 +1000,14 @@ function drawNameplate(g, T, wf) {
   g.fillStyle = '#211c2b'; g.fillRect(16, 14, 46, 46);
   g.imageSmoothingEnabled = false; g.drawImage(SPR.ninja.front[0], 18, 16, 42, 42);
   txt(g, NW, 72, 26, 22, '#ffffff', { a: 'left', sw: 4 });
-  txt(g, DIFFS[CUR_DIFF].name, 73, 50, 15, DIFFS[CUR_DIFF].col, { a: 'left', f: 'SilkB', sw: 3, w: 400 });
+  drawStarIcon(g, 262, 25, 9); txt(g, '89', 275, 26, 18, '#ffffff', { a: 'left', sw: 3 });
+  g.fillStyle = '#f4f8ff'; g.fillRect(73, 45, 12, 7); g.fillRect(73, 41, 2, 4); g.fillRect(78, 41, 2, 4); g.fillRect(83, 41, 2, 4);   // guild crown
+  txt(g, 'HOODLUMS', 91, 50, 15, '#5ee06a', { a: 'left', f: 'SilkB', sw: 3, w: 400 });
+}
+function drawStarIcon(g, x, y, r) {
+  g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath();
+  for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r * 0.45 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.stroke();
 }
 function bossHpAt(wf) { return Math.max(0, MAXHP - S.cum[Math.max(0, wf)]); }
 function drawBossBar(g, T, wt, wf) {
@@ -975,7 +1040,8 @@ function drawBossBar(g, T, wt, wf) {
   for (const q of [0.72, 0.5, 0.3, 0.15]) { g.fillStyle = '#ffd23f'; g.fillRect(bx + bw * q - 1, by - 3, 3, bh + 6); }
   txt(g, fmtK(hp) + ' / ' + fmtK(MAXHP), bx + bw / 2, by + bh / 2 + 1, 16, '#ffffff', { sw: 4 });
   const inv = !bossVulnerable(T) && T < T_KILL;
-  if (inv && Math.floor(T * 4) % 2 === 0 || inv && T < TL.land) txt(g, 'INVULNERABLE', bx + bw - 6, by + bh / 2 + 1, 13, '#9ff4ff', { a: 'right', sw: 3 });
+  const guarded = S.sent.some(z => z.deadT === Infinity && T >= z.T);
+  if (inv && Math.floor(T * 4) % 2 === 0 || inv && T < TL.land) txt(g, guarded ? 'SHIELDED — DESTROY THE SENTINELS' : 'INVULNERABLE', bx + bw - 6, by + bh / 2 + 1, 13, guarded ? '#ff8a9a' : '#9ff4ff', { a: 'right', sw: 3 });
   g.globalAlpha = 1;
 }
 function drawChat(g, T) {
@@ -985,10 +1051,10 @@ function drawChat(g, T) {
   const recent = lines.slice(-6).filter(c => T - c[0] < 16);
   g.font = '700 21px Pix';
   const out = [];
-  for (const [t, who, msg] of recent) {
-    const name = who === 'boss' ? BOSS : who === 'nw' ? NW : '';
+  for (const c of recent) {
+    const [t, who, msg] = c, name = who === 'boss' ? BOSS : who === 'nw' ? NW : '';
     const prefix = name ? '[' + name + ']: ' : '';
-    const wl = wrap(g, prefix + msg, 640);
+    const wl = c.wl || (c.wl = wrap(g, prefix + msg, 640));   // chat lines never change: wrap once
     wl.forEach((l, i) => out.push({ t, who, l, first: i === 0, prefix }));
   }
   const show = out.slice(-7), y0 = GH - 34 - show.length * 27;
@@ -1060,13 +1126,11 @@ function drawSidebar(x, T) {
       txt(x, 'SPACE', sx + 39, sy + 70, 12, '#c9b8d8', { f: 'SilkB', sw: 3, w: 400 });
     }
   });
-  const inv = ['dexPot', 'spdPot', 'waffle', 'key', 'cloak', null, null, null];
-  inv.forEach((k, i) => {
+  for (let i = 0; i < 8; i++) {   // the inventory: empty
     const sx = X + 14 + (i % 4) * 84, sy = 556 + Math.floor(i / 4) * 84;
     x.fillStyle = '#1c1924'; x.fillRect(sx, sy, 78, 78); x.strokeStyle = '#2f2a3a'; x.lineWidth = 2; x.strokeRect(sx + 1, sy + 1, 76, 76);
-    if (k) { const ic = SPR.icon[k]; x.drawImage(ic, sx + 39 - ic.width * 3, sy + 39 - ic.height * 3, ic.width * 6, ic.height * 6); }
-    else txt(x, String(i + 1), sx + 39, sy + 40, 26, '#2f2a3a', { sw: 0 });
-  });
+    txt(x, String(i + 1), sx + 39, sy + 40, 26, '#2f2a3a', { sw: 0 });
+  }
   const pots = S ? S.p.pots : TUNE.pots, mpots = S ? S.p.mpots : TUNE.mpots;
   x.fillStyle = '#1c1924'; x.fillRect(X + 14, 730, 162, 44); x.fillRect(X + 184, 730, 162, 44);
   x.drawImage(SPR.icon.hpPot, X + 24, 733, 40, 40); txt(x, pots + '/' + TUNE.pots, X + 110, 752, 24, pots ? '#fff' : '#ff6b6b', { sw: 4 }); txt(x, 'F', X + 160, 752, 16, '#c9b8d8', { f: 'SilkB', sw: 3 });
@@ -1135,8 +1199,9 @@ function drawOverlays(x, T) {
   const bn = fxSince('banner', T, 1.8);
   if (bn) {
     const u = T - bn.T, a = u < 0.12 ? u / 0.12 : u > 1.3 ? 1 - (u - 1.3) / 0.5 : 1, sc = 1 + 0.8 * Math.max(0, 1 - u / 0.15);
-    x.globalAlpha = a; x.globalCompositeOperation = 'lighter'; glowAt(x, 'p', GW / 2, 330, 900, 0.5 * a); x.globalCompositeOperation = 'source-over';
-    txt(x, bn.text, GW / 2, 330, 58 * sc, '#f2ddff', { f: 'P2P', sc: '#4a1070', sw: 10, w: 400 });
+    const by = bn.y || 330, bs = bn.size || 58;   // minion calls sit small under the top bar, clear of the fight
+    x.globalAlpha = a; x.globalCompositeOperation = 'lighter'; glowAt(x, 'p', GW / 2, by, bs * 15, 0.5 * a); x.globalCompositeOperation = 'source-over';
+    txt(x, bn.text, GW / 2, by, bs * sc, bn.col || '#f2ddff', { f: 'P2P', sc: '#4a1070', sw: bs / 5.8, w: 400 });
     x.globalAlpha = 1;
   }
   // boss title card
@@ -1277,7 +1342,7 @@ function drawResults(x, T) {
   const R = T_KILL - T_RUN;
   const grd = x.createLinearGradient(0, Y + 150, 0, Y + 260); grd.addColorStop(0, '#fff3a0'); grd.addColorStop(1, '#e0a020');
   x.font = '700 120px Chakra'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = grd; x.fillText(fmtTime(R, 2), X + w / 2, Y + 210);
-  txt(x, NW + (S.practice ? '' : G.newPB ? (G.prevPB != null ? ' · NEW PB by −' + (G.prevPB - R).toFixed(2) + 's' : ' · first clear!') : G.prevPB != null ? ' · PB ' + fmtTime(G.prevPB) : ''), X + w / 2, Y + 290, 28, COL.nw, { sw: 4 });
+  txt(x, NW + ' · Wizard' + (S.practice ? '' : G.newPB ? (G.prevPB != null ? ' · NEW PB by −' + (G.prevPB - R).toFixed(2) + 's' : ' · first clear!') : G.prevPB != null ? ' · PB ' + fmtTime(G.prevPB) : ''), X + w / 2, Y + 290, 28, COL.nw, { sw: 4 });
   SPLITS.forEach((s, i) => {
     const y = Y + 334 + i * 38, st = s.T - T_RUN, d = s.pb != null ? st - s.pb : null, v = u > 0.6 + i * 0.25;
     if (!v || !isFinite(s.T) || s.T <= 0) return;
@@ -1343,6 +1408,8 @@ function drawCredits(x, T) {
   const lines = [
     [0.3, 'a fan-made concept', 30, '#9c95ab', 'SilkB'],
     [0.9, 'ORYX THE MAD GOD IV', 56, '#ffcf5a', 'P2P'],
+    [1.6, 'Runner — ' + NW, 34, COL.nw, 'Pix'],
+    [2.3, 'inspired by “New Enchants are GAMEBREAKING — Speedrun Solo Oryx Sanctuary (3:34)”', 24, '#c9b8d8', 'Pix'],
     [3.0, 'boss, sprites, music and sound are original and generated in code', 24, '#c9b8d8', 'Pix'],
     [3.6, 'not affiliated with or endorsed by DECA Games', 22, '#7a7a90', 'Pix'],
     [4.6, 'Oryx IV does not exist. Yet.', 40, '#ff6477', 'SilkB'],

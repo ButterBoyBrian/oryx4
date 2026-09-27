@@ -43,8 +43,8 @@ let S = null, CUR_T = 0;
 // difficulty only changes your survivability; the fight itself is identical on every setting
 const DIFFS = {
   easy:       { name: 'EASY',       hp: 2500, regen: 100, pots: 12, mpots: 12, col: '#7dffb0' },
-  hard:       { name: 'HARD',       hp: 1250, regen: 25,  pots: 6,  mpots: 6,  col: '#ffd23f' },
-  diabolical: { name: 'DIABOLICAL', hp: 1250, regen: 13,  pots: 0,  mpots: 0,  col: '#ff4f6a' },
+  hard:       { name: 'HARD',       hp: 1250, regen: 20,  pots: 6,  mpots: 6,  col: '#ffd23f' },
+  diabolical: { name: 'DIABOLICAL', hp: 1250, regen: 12,  pots: 0,  mpots: 0,  col: '#ff4f6a' },
 };
 const DIFF_ORDER = ['easy', 'hard', 'diabolical'];
 let CUR_DIFF = 'hard';
@@ -455,7 +455,7 @@ function midnightAI(T0, T1) {
     }
     for (const [t, k] of ticks(T0, T1, B0 + 7.5, e(10.4), 2.6 / M)) bell(t, k);
     if (T0 < B0 + 12.3 && T1 >= B0 + 12.3 && B0 + 12.3 < end) dissolve(q => q.k === 'orbW', B0 + 12.3);
-    if (T0 < B0 + 6.5 && T1 >= B0 + 6.5 && B0 + 6.5 < end) spawnCuckoos(B0 + 6.5, 5, 5.3);
+    if (T0 < B0 + 6.5 && T1 >= B0 + 6.5 && B0 + 6.5 < end) { spawnCuckoos(B0 + 6.5, 5, 5.3); S.fx.push({ T: B0 + 6.5, type: 'banner', text: 'SHOOT DOWN THE CUCKOOS', y: 176, size: 30, col: '#ffd0a0' }); }
     // Hourglass: sand down from XII, flip, sand up from VI; Second Hands hunt you throughout
     for (const [t, k] of ticks(T0, T1, B0 + 12, e(14.2), 0.55)) sandRow(t, k, 1, 3.0, 0, 2.2, 1.0);
     if (T0 < B0 + 14.5 && T1 >= B0 + 14.5 && B0 + 14.5 < end) { S.fx.push({ T: B0 + 14.5, type: 'banner', text: 'THE HOURGLASS TURNS' }); S.ev.push({ T: B0 + 14.5, type: 'flip' }); }
@@ -577,6 +577,7 @@ function pillar(te, x, y) {
 }
 
 // ---------- minions ----------
+const SENT_POS = [[-0.8, -7.2], [7.2, -0.6], [0.8, 6.6], [-7.2, 0.6]];   // Phase III sentinels: Oryx is shielded until all four fall
 function echoPos(e, T) { const a = e.a0 + 0.1 * (T - e.T); return { x: 8.3 * Math.cos(a), y: -0.6 + 7.6 * Math.sin(a) }; }
 function minionAI(T0, T1) {
   const p = S.p;
@@ -596,8 +597,8 @@ function minionAI(T0, T1) {
   }
   updateCuckoos(T1);
   if (T0 < TL.sent - 0.2 && T1 >= TL.sent - 0.2) {
-    [[-0.8, -7.2], [7.2, -0.6], [0.8, 6.6], [-7.2, 0.6]].forEach(([x, y], i) => S.sent.push({ x, y, i, hp: 21000, dmg: 0, T: TL.sent - 0.2, deadT: Infinity }));
-    S.ev.push({ T: TL.sent - 0.2, type: 'sentinels' });
+    SENT_POS.forEach(([x, y], i) => S.sent.push({ x, y, i, hp: 21000, dmg: 0, T: TL.sent - 0.2, deadT: Infinity }));
+    S.ev.push({ T: TL.sent - 0.2, type: 'sentinels' }); S.fx.push({ T: TL.sent - 0.2, type: 'banner', text: 'DESTROY THE SENTINELS', y: 176, size: 30, col: '#ffb3bd' });
   }
   // the sentries withdraw just before the glass spikes begin: they sink away and their arrows dissolve
   cyc(T0, T1, TL.p3, TL.mn, 32, (B) => {

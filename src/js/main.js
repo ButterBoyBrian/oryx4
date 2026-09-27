@@ -1,6 +1,6 @@
 'use strict';
 // ================= the playable game: loop, input, menus =================
-const CV = document.getElementById('cv'), CTX = CV.getContext('2d');
+const CV = document.getElementById('cv'), CTX = CV.getContext('2d', { alpha: false });   // always fully painted
 const G = { mode: 'load', paused: false, autofire: true, keys: {}, mx: GW / 2, my: GH / 2 - 200, lmb: false, attempts: 0, newPB: false, prevPB: null, practice: 0, titleT: 0, deadAt: 0 };
 const store = {
   get(k, d) { try { const v = localStorage.getItem('oryx4.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -50,7 +50,7 @@ function canvasPos(e) { const r = CV.getBoundingClientRect(); return [(e.clientX
 CV.addEventListener('mousemove', e => { [G.mx, G.my] = canvasPos(e); });
 CV.addEventListener('mousedown', e => {
   e.preventDefault(); audioInit(); [G.mx, G.my] = canvasPos(e);
-  if (G.mode === 'title') { if (e.button !== 0) return; const hit = DIFF_ORDER.find((d, i) => Math.abs(G.mx - diffX(i)) < 100 && Math.abs(G.my - 906) < 28); if (hit) pickDiff(hit); else begin(0); return; }
+  if (G.mode === 'title') { if (e.button !== 0) return; const hit = DIFF_ORDER.find((d, i) => Math.abs(G.mx - diffX(i)) < 100 && Math.abs(G.my - 906) < 28), pr = practiceHit(); if (hit) pickDiff(hit); else if (pr >= 0) begin(pr + 1); else begin(0); return; }
   if (e.button === 0) G.lmb = true;
   if (e.button === 1 && G.mode === 'play') toggleAuto();
 });
@@ -58,6 +58,8 @@ addEventListener('mouseup', e => { if (e.button === 0) G.lmb = false; });
 CV.addEventListener('contextmenu', e => e.preventDefault());
 CV.addEventListener('auxclick', e => e.preventDefault());
 const diffX = i => 1140 + i * 220;
+const PRACTICE_BTN = ['TICK', 'REWIND', 'STASIS', 'XI HOUR', 'MIDNIGHT', 'FINAL SEC'], practX = i => 1055 + i * 122, PRACT_Y = 784;
+const practiceHit = () => PRACTICE_BTN.findIndex((_, i) => Math.abs(G.mx - practX(i)) < 58 && Math.abs(G.my - PRACT_Y) < 18);
 function pickDiff(d) { if (d === CUR_DIFF) return; setDifficulty(d); store.set('difficulty', d); uiBlip(d === 'easy' ? 0.8 : d === 'hard' ? 1.0 : 1.3); }
 const pbKey = () => 'pb6.' + CUR_DIFF;
 function toggleAuto() { G.autofire = !G.autofire; store.set('autofire', G.autofire); uiBlip(G.autofire ? 1.25 : 0.8); }
@@ -97,16 +99,19 @@ function onKill() {
 let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  RI.a = 1;
   if (G.mode === 'play' && S && !G.paused) {
     acc += dt;
     let n = 0;
     while (acc >= 1 / FPS && n < 6) {
+      RI.S = S; RI.wt = S.wt; RI.cx = S.cam.x; RI.cy = S.cam.y; RI.cz = S.cam.z;   // the state before this step, for interpolation
       if (!S.dead) { applyInput(); step(); }
       acc -= 1 / FPS; n++;
       if (S.dead && !G.deadAt) G.deadAt = now;
       if (T_KILL !== Infinity) onKill();
     }
     if (n === 6) acc = 0;
+    RI.a = Math.min(1, acc * FPS);   // how far we are toward the next step: high-refresh screens draw the in-between
     playEvents(S.ev.splice(0));
     musicUpdate(S.T);
   } else if (G.mode === 'title') { G.titleT += dt; musicUpdate(0); }
@@ -119,7 +124,6 @@ function render(now) {
   if (G.mode === 'load' || G.mode === 'title') { drawTitle(x, G.titleT); drawCursor(x); return; }
   const T = Math.max(0, (S.f - 1) / FPS);
   drawGameView(T);
-  x.drawImage(GAME, 0, 0);
   drawSidebar(x, T);
   drawOverlays(x, T);
   drawPlayHud(x, T);
@@ -168,7 +172,7 @@ function drawPause(x) {
   drawControls(x, W / 2 - 330, 330);
   txt(x, 'ESC — resume      R — restart      Q — quit to title      M — mute', W / 2, 830, 20, '#ffffff', { f: 'SilkB', sw: 3, w: 400 });
 }
-const CONTROLS = [['WASD', 'move'], ['Mouse', 'aim'], ['Left click', 'shoot (when autofire is off)'], ['C / MMB / I', 'toggle autofire'], ['Space', 'Arcane Spell (110 MP)'], ['F / V', 'health / magic potion'], ['Esc', 'pause'], ['Esc, then R', 'restart the run']];
+const CONTROLS = [['WASD', 'move'], ['Mouse', 'aim'], ['Left click', 'shoot (when autofire is off)'], ['C / MMB / I', 'toggle autofire'], ['Space', 'Arcane Shuriken (110 MP)'], ['F / V', 'health / magic potion'], ['Esc', 'pause'], ['Esc, then R', 'restart the run']];
 function drawControls(x, X, Y) {
   panel(x, X, Y, 660, 36 + CONTROLS.length * 40, { bg: 'rgba(10,8,16,0.88)', bd: '#4a3f63' });
   CONTROLS.forEach(([k, v], i) => {
@@ -202,14 +206,21 @@ function drawTitle(x, t) {
   }
   txt(x, 'ORYX THE MAD GOD IV', 1360, 170, 50, '#ffcf5a', { f: 'P2P', sw: 9, sc: '#2a0508', w: 400 });
   txt(x, '— THE UNWOUND —', 1360, 238, 26, '#ff6477', { f: 'P2P', sw: 5, w: 400 });
-  txt(x, 'a fan-made boss rush · play as the yellow wizard', 1360, 290, 22, '#c9b8d8', { sw: 0 });
+  txt(x, 'a fan-made boss rush · play as ' + NW + ' the Wizard', 1360, 290, 22, '#c9b8d8', { sw: 0 });
   drawControls(x, 1030, 330);
   const blink = Math.floor(t * 2) % 2 === 0;
   txt(x, 'ENTER or CLICK — begin the run', 1360, 720, 26, blink ? '#ffe07a' : '#ffffff', { f: 'SilkB', sw: 4, w: 400 });
-  txt(x, '1–5 — practice phase I–V   ·   6 — the final seconds', 1360, 764, 20, '#c9b8d8', { f: 'SilkB', sw: 3, w: 400 });
+  // practice: click a phase, or press its number
+  txt(x, 'PRACTICE A PHASE — click or press 1–6', 1360, 750, 13, '#9c95ab', { f: 'SilkB', sw: 0, w: 400 });
+  const ph = practiceHit();
+  PRACTICE_BTN.forEach((name, i) => {
+    const cx = practX(i), on = ph === i;
+    panel(x, cx - 58, PRACT_Y - 18, 116, 36, { bg: on ? 'rgba(58,36,88,0.95)' : 'rgba(14,10,18,0.85)', bd: on ? '#c77dff' : '#3a3346', lw: on ? 3 : 2 });
+    txt(x, (i + 1) + ' ' + name, cx, PRACT_Y + 1, 13, on ? '#f2ddff' : '#c9b8d8', { f: 'SilkB', sw: 0, w: 400 });
+  });
   const pb = store.get(pbKey(), null), att = store.get('attempts', 0);
-  txt(x, DIFFS[CUR_DIFF].name + ' personal best: ' + (pb ? fmtTime(pb.total) : '—') + '    ·    attempts: ' + att, 1360, 806, 22, '#ffd23f', { sw: 3 });
-  txt(x, 'At the twelfth bell, midnight falls. Survive it.', 1360, 842, 20, '#ff9aa8', { sw: 3 });
+  txt(x, DIFFS[CUR_DIFF].name + ' personal best: ' + (pb ? fmtTime(pb.total) : '—') + '    ·    attempts: ' + att, 1360, 822, 22, '#ffd23f', { sw: 3 });
+  txt(x, 'At the twelfth bell, midnight falls. Survive it.', 1360, 852, 20, '#ff9aa8', { sw: 3 });
   // difficulty chooser
   DIFF_ORDER.forEach((d, i) => {
     const D = DIFFS[d], on = d === CUR_DIFF, cx = diffX(i), hover = Math.abs(G.mx - cx) < 100 && Math.abs(G.my - 906) < 28;
