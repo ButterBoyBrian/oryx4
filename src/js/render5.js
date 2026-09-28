@@ -534,7 +534,7 @@ function postFx5(g, T, wt) {
   g.globalCompositeOperation = 'source-over';
   // the chase: the edges of the view burn and streak while the party hunts you
   const ch = S.f5.chase;
-  if (ch && T >= ch.C && T < ch.end + 0.6 && T < T_KILL) {
+  if (ch && !ch.rite && T >= ch.C && T < ch.end + 0.6 && T < T_KILL) {
     const v = sat((T - ch.C) / 0.4) * sat((ch.end + 0.6 - T) / 0.6), pulse = 0.7 + 0.3 * Math.sin(T * 9);
     g.globalAlpha = 0.3 * v * pulse; g.drawImage(VIG_LOW, 0, 0); g.globalAlpha = 1;
     g.globalCompositeOperation = 'lighter';
@@ -568,12 +568,12 @@ function postFx5(g, T, wt) {
 }
 
 const RGB5 = { v: '170,90,255', e: '90,255,140', w: '255,255,255', r: '255,80,90', c: '120,230,255', g: '255,214,90', p: '199,125,255', b: '90,170,255', o: '255,150,60' };
-// the chase's title slams in from the side
+// the title of a chase (or a rite) slams in from the side
 function drawChaseBanner5(x, T) {
   const e = fxSince('chase', T, 2.2); if (!e) return;
   const u = T - e.T, a = u < 0.15 ? u / 0.15 : u > 1.7 ? 1 - (u - 1.7) / 0.5 : 1, sx = (1 - easeOut(u / 0.25)) * 900, y = 300;
-  x.globalAlpha = a; x.fillStyle = 'rgba(90,0,10,0.55)'; x.beginPath(); x.moveTo(0, y - 46); x.lineTo(GW, y - 60); x.lineTo(GW, y + 40); x.lineTo(0, y + 54); x.closePath(); x.fill();
-  txt(x, e.text + '!', GW / 2 + sx, y, 58 * (1 + 0.2 * Math.max(0, 1 - u / 0.2)), '#ff6477', { f: 'P2P', sw: 9, sc: '#2a0508', w: 400 });
+  x.globalAlpha = a; x.fillStyle = e.rite ? 'rgba(60,40,0,0.55)' : 'rgba(90,0,10,0.55)'; x.beginPath(); x.moveTo(0, y - 46); x.lineTo(GW, y - 60); x.lineTo(GW, y + 40); x.lineTo(0, y + 54); x.closePath(); x.fill();
+  txt(x, e.text + '!', GW / 2 + sx, y, 58 * (1 + 0.2 * Math.max(0, 1 - u / 0.2)), e.rite ? '#ffcf5a' : '#ff6477', { f: 'P2P', sw: 9, sc: e.rite ? '#2a1400' : '#2a0508', w: 400 });
   x.globalAlpha = 1;
 }
 // ---------- HUD ----------
