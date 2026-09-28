@@ -1809,9 +1809,8 @@ const per5 = p => p / V5.rate;   // a pattern period, scaled by V5.rate
 const BOSS_CFG = { 4: { maxhp: MAXHP, floor: PHASE_FLOOR, splits: SPLITS, phases: PHASES, name: BOSS },
   5: { maxhp: MAXHP5, floor: FLOOR5, splits: SPLITS5, phases: PHASES5, name: 'Oryx the Mad God V' } };
 function selectBoss(n) { const c = BOSS_CFG[n]; BOSS_N = n; MAXHP = c.maxhp; PHASE_FLOOR = c.floor; SPLITS = c.splits; PHASES = c.phases; BOSS = c.name; setDifficulty(CUR_DIFF); }
-// Oryx V's own tweaks to a difficulty: Easy's Last Stand is on a shorter clock (45 s, never less than 30)
-const DIFF5 = { easy: { last: { base: 45, cap: 15 } } };
-const surv5 = F => F.surv ? Object.assign({ bonus: 0 }, F.surv, F.ai === 'knight3' && diffOf(CUR_DIFF).last) : null;   // a stage's survival clock
+// Oryx V's own tweaks to a difficulty (none at present: the same Easy, Hard and Diabolical as Oryx IV)
+const DIFF5 = {};
 const diffOf = d => BOSS_N === 5 ? Object.assign({}, DIFFS[d], DIFF5[d]) : DIFFS[d];
 
 // ---------- state ----------
@@ -1819,7 +1818,7 @@ const practiceBase5 = p => p && PRACT5[p - 1] ? (1 - FLOOR5[PRACT5[p - 1] - 1]) 
 function initS5(practice) {
   TL.rw = TL.rwA = TL.rwB = TL.ts = TL.tsA = TL.tsB = NEG;   // no rewind or time stop in this fight (shared code reads these)
   const i0 = practice ? PRACT5[practice - 1] : 0, T = TL.land + 1.6, F = FORMS5[i0];
-  S.f5 = { i: i0, mT: -9, T, from: -1, trig: -1, W0: TL.land, log: [{ i: i0, mT: -9, T }], a0: S.rng() * TAU, st: {}, sv: surv5(F), turn: -1 };
+  S.f5 = { i: i0, mT: -9, T, from: -1, trig: -1, W0: TL.land, log: [{ i: i0, mT: -9, T }], a0: S.rng() * TAU, st: {}, sv: F.surv ? Object.assign({ bonus: 0 }, F.surv) : null, turn: -1 };
   S.mv5 = []; S.mobs = []; S.decoys = []; S.lanes5 = []; S.traps = []; S.heroes = []; S.zones5 = [];
   S.bodyR = 2.9; S.bossR = 2.8;
   if (F.party) spawnParty5(TL.land + 0.4, T);
@@ -2461,7 +2460,7 @@ function trigger5(T) {
   endForm5(T, big);
   // a stance lands on the beat of the phase's music; a new weapon (or the last stand) restarts it
   const t1 = big ? T + dur : f.W0 + Math.ceil((T + dur - f.W0) / BEAT - 1e-9) * BEAT;
-  Object.assign(f, { i: i + 1, mT: T, T: t1, from: i, st: {}, big, sv: surv5(nf), nextSig: undefined, turn: -1, cage: null, cover: null });
+  Object.assign(f, { i: i + 1, mT: T, T: t1, from: i, st: {}, big, sv: nf.surv ? Object.assign({ bonus: 0 }, nf.surv) : null, nextSig: undefined, turn: -1, cage: null, cover: null });
   if (big) f.W0 = t1;
   f.log.push({ i: i + 1, mT: T, T: t1 });
   if (nf.party) spawnParty5(T + 1.4, t1);
