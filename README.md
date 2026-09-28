@@ -10,7 +10,7 @@ Two fan-made bullet-hell boss fights inspired by Realm of the Mad God's Oryx ser
   fights you himself, as the Knight. Every hero has its own health and signature moves named for its items, and the
   heroes strafe, dash and blink around you while they fight. Every so often a whole party breaks off, in turn to take
   its marks and play one great pattern together, and to hunt you down. The Colosseum and the Knight's Last Stand are survival phases: outlast a clock that every hit you land winds
-  down faster. It lasts four to five minutes and is much harder than Oryx IV.
+  down faster. A good run lasts about five minutes, and it is much harder than Oryx IV.
 
 Sprites, music and sound are original and generated in code.
 

@@ -1762,10 +1762,10 @@ const FORMS5 = [
   { ai: 'wand', w: 1, id: 'priest', name: 'THE CHOIR', party: ['priest', 'sorc', 'summoner'], tr: 'weapon' },
   { ai: 'bow', w: 2, id: 'archer', name: 'THE HUNT', party: ['archer', 'huntress', 'bard'], tr: 'weapon' },
   { ai: 'dagger', w: 3, id: 'rogue', name: 'THE NIGHT', party: ['rogue', 'assassin', 'trickster'], tr: 'weapon' },
-  { ai: 'sword', w: 4, id: 'warrior', name: 'THE COLOSSEUM', party: ['warrior', 'paladin'], tr: 'weapon', surv: { base: 54, K: 16000 } },
+  { ai: 'sword', w: 4, id: 'warrior', name: 'THE COLOSSEUM', party: ['warrior', 'paladin'], tr: 'weapon', surv: { base: 46, K: 19000 } },
   { ai: 'knight1', w: 5, id: 'knight', name: 'THE KNIGHT', hp: 300000, tr: 'weapon', stance: 'SHIELD CHARGE' },
   { ai: 'knight2', w: 5, id: 'knight', name: 'THE KNIGHT', hp: 300000, tr: 'stance', stance: 'BLADESTORM' },
-  { ai: 'knight3', w: 5, id: 'knight', name: 'THE KNIGHT', tr: 'last', stance: 'LAST STAND', surv: { base: 35, K: 20000, cap: 15 } },   // 35 s if you never hit him, never less than 20
+  { ai: 'knight3', w: 5, id: 'knight', name: 'THE KNIGHT', tr: 'last', stance: 'LAST STAND', surv: { base: 60, K: 20000, cap: 20 } },   // 60 s if you never hit him, never less than 40
 ];
 // the stolen heroes: health (the Colosseum's champions have none: they are outlasted), name, and the shot of their last volley
 const HERO5 = {
@@ -1809,8 +1809,9 @@ const per5 = p => p / V5.rate;   // a pattern period, scaled by V5.rate
 const BOSS_CFG = { 4: { maxhp: MAXHP, floor: PHASE_FLOOR, splits: SPLITS, phases: PHASES, name: BOSS },
   5: { maxhp: MAXHP5, floor: FLOOR5, splits: SPLITS5, phases: PHASES5, name: 'Oryx the Mad God V' } };
 function selectBoss(n) { const c = BOSS_CFG[n]; BOSS_N = n; MAXHP = c.maxhp; PHASE_FLOOR = c.floor; SPLITS = c.splits; PHASES = c.phases; BOSS = c.name; setDifficulty(CUR_DIFF); }
-// Oryx V's own tweaks to a difficulty (none at present: the same Easy, Hard and Diabolical as Oryx IV)
-const DIFF5 = {};
+// Oryx V's own tweaks to a difficulty: Easy's Last Stand is on a shorter clock (45 s, never less than 30)
+const DIFF5 = { easy: { last: { base: 45, cap: 15 } } };
+const surv5 = F => F.surv ? Object.assign({ bonus: 0 }, F.surv, F.ai === 'knight3' && diffOf(CUR_DIFF).last) : null;   // a stage's survival clock
 const diffOf = d => BOSS_N === 5 ? Object.assign({}, DIFFS[d], DIFF5[d]) : DIFFS[d];
 
 // ---------- state ----------
@@ -1818,7 +1819,7 @@ const practiceBase5 = p => p && PRACT5[p - 1] ? (1 - FLOOR5[PRACT5[p - 1] - 1]) 
 function initS5(practice) {
   TL.rw = TL.rwA = TL.rwB = TL.ts = TL.tsA = TL.tsB = NEG;   // no rewind or time stop in this fight (shared code reads these)
   const i0 = practice ? PRACT5[practice - 1] : 0, T = TL.land + 1.6, F = FORMS5[i0];
-  S.f5 = { i: i0, mT: -9, T, from: -1, trig: -1, W0: TL.land, log: [{ i: i0, mT: -9, T }], a0: S.rng() * TAU, st: {}, sv: F.surv ? Object.assign({ bonus: 0 }, F.surv) : null, turn: -1 };
+  S.f5 = { i: i0, mT: -9, T, from: -1, trig: -1, W0: TL.land, log: [{ i: i0, mT: -9, T }], a0: S.rng() * TAU, st: {}, sv: surv5(F), turn: -1 };
   S.mv5 = []; S.mobs = []; S.decoys = []; S.lanes5 = []; S.traps = []; S.heroes = []; S.zones5 = [];
   S.bodyR = 2.9; S.bossR = 2.8;
   if (F.party) spawnParty5(TL.land + 0.4, T);
@@ -1960,7 +1961,7 @@ function spot5(h, r, da) { const p = S.p, a = Math.atan2(h.y - p.y, h.x - p.x) +
 function run5(h, t, x1, y1, o) {   // (h: a hero, or one of the Trickster's copies)
   [x1, y1] = intoA5(x1, y1, 1.6);
   const x0 = h.x, y0 = h.y, a = Math.atan2(y1 - y0, x1 - x0), L = Math.hypot(x1 - x0, y1 - y0), tl = o.tele ?? 0.5, dur = Math.max(0.05, L / o.spd), te = t + tl;
-  S.tele.push({ kind: 'line', t0: wtAt(t), t1: wtAt(te), x: x0, y: y0, a, w: o.w ?? 0.45, len: L, col: o.col });
+  S.tele.push({ kind: 'line', t0: wtAt(t), t1: wtAt(te), x: x0, y: y0, a, w: o.w ?? (o.wall ? 1.25 : 0.45), len: L, col: o.col });   // (a wall is 2 tiles wide: the band covers it)
   h.go = { T0: te, T1: te + dur, x0, y0, x1, y1, dash: 1, land: o.land ?? 0.5 };
   if (o.k) for (let s = 1.2; s < L; s += o.gap ?? 0.6) { const dl = tl + s / o.spd; e5(t, { cx: x0 + Math.cos(a) * s, cy: y0 + Math.sin(a) * s, r0: 0, vr: 0, th: a, k: o.k, dl, rv: t + dl, tg: 1, hid: 1, cont: 1, life: o.trail ?? 0.5 }); }
   if (o.wall) for (let j = -2; j <= 2; j++) e5(t, { cx: x0 + Math.cos(a) * 1.5 - Math.sin(a) * j * 0.5, cy: y0 + Math.sin(a) * 1.5 + Math.cos(a) * j * 0.5, r0: 0, vr: o.spd, th: a, k: o.wall, dl: tl, rv: te, tg: 1, cont: 1, life: dur });
@@ -2000,7 +2001,7 @@ function party5(T0, T1) {
     Object.assign(ch, { C: T1, rite, end: T1 + (rite ? RT.dur : 4.5), next: T1 + 15, st: {} });
     live.forEach((h, j) => {
       h.mode = null; h.hold = 0;
-      if (rite) { const [x, y] = intoA5(...RT.spot(h, j, live.length, ch.st), 1.8); h.go = { T0: T1, T1: T1 + 0.8, x0: h.x, y0: h.y, x1: x, y1: y, hop: 3, land: 0.8 }; h.hold = ch.end; }
+      if (rite) { if (!j) crumble5(T1); const [x, y] = intoA5(...RT.spot(h, j, live.length, ch.st), 1.8); h.go = { T0: T1, T1: T1 + 0.8, x0: h.x, y0: h.y, x1: x, y1: y, hop: 3, land: 0.8 }; h.hold = ch.end; }
       else if (CHASE5[h.id].start) { SRC5 = h.id + '.chase'; CHASE5[h.id].start(h, T1); }
     });
     S.fx.push({ T: T1, type: 'chase', text: rite ? RT.name : CHASE_NAME5[FORMS5[f.i].ai], rite }); S.ev.push({ T: T1, type: 'chase' });
@@ -2011,7 +2012,7 @@ function party5(T0, T1) {
   if (T1 >= f.nextSig) {
     let h = null;
     for (let k = 1; k <= H.length && !h; k++) { const c = H[(f.turn + k + H.length) % H.length]; if (c.deadT === Infinity && !inSig(c)) { h = c; f.turn = c.j; } }
-    if (h) { const A = HAI5[h.id], s = A.sigs[h.sigN++ % A.sigs.length]; Object.assign(h, { sig: s, sigB: f.nextSig, sg: {}, mode: null, hold: f.nextSig + s.dur }); item5(h, s.name, f.nextSig); f.nextSig += s.dur + SIG_GAP5; }
+    if (h) { const A = HAI5[h.id], s = A.sigs[h.sigN++ % A.sigs.length]; Object.assign(h, { sig: s, sigB: f.nextSig, sg: {}, mode: null, hold: f.nextSig + s.dur }); item5(h, s.name, f.nextSig); if (s.heavy) crumble5(f.nextSig); f.nextSig += s.dur + SIG_GAP5; }
     else f.nextSig = T1 + 0.2;
   }
   const PF = PARTY5[FORMS5[f.i].ai]; SRC5 = 'party'; if (PF && !(brk && ch.rite)) PF(T0, T1, live);
@@ -2027,6 +2028,9 @@ function party5(T0, T1) {
     if (chasing && CHASE5[h.id].fire) { SRC5 = h.id + '.chase'; CHASE5[h.id].fire(h, T0, T1, ch.C); }
   }
 }
+// minions crumble when a bullet-heavy set piece begins (a rite, or a signature marked heavy), and none rise until it is over
+const heavy5 = T => { const c = S.f5.chase; return !!(c && c.rite && T < c.end + 0.3) || S.heroes.some(h => h.sig && h.sig.heavy && T >= h.sigB - 0.1 && T < h.sigB + h.sig.dur + 0.3); };
+function crumble5(T) { for (const m of S.mobs) if (m.deadT === Infinity && m.kind !== 'seal') { m.deadT = T; m.gone = 1; S.fx.push({ T, type: 'boom', x: m.x, y: m.y, s: 0.5 }); } }
 // what a whole party does together
 const PARTY5 = {
   staff(T0, T1, L) {   // the Conclave's arcane circuit: each caster streams bolts at the next (a triangle of three, a line of two)
@@ -2045,14 +2049,14 @@ const HAI5 = {
   wizard: {
     basic: [0.55, (h, t) => braid5(t, h.x, h.y, leadA(h.x, h.y, 7.5, 0.7), 7.5, 'sbolt', 0.3, 2.8)],
     sigs: [
-      { name: 'STAFF OF ASTRAL KNOWLEDGE', dur: 5.6, fn(h, T0, T1, B) {   // CONSTELLATION: stars linked in a zig-zag around you; a comet runs the lines and each star bursts as it passes
+      { name: 'STAFF OF ASTRAL KNOWLEDGE', dur: 5.6, heavy: 1, fn(h, T0, T1, B) {   // CONSTELLATION: stars linked in a zig-zag around you; a comet runs the lines and each star bursts as it passes
         for (const [t] of ticks(T0, T1, B - 1e-6, B + 3.3, 1.6)) {
           const R = S.rng, p = S.p, a0 = R() * TAU, pts = [];
           for (let j = 0; j < 6; j++) { const r = j % 2 ? 2.2 : 5.8, a = a0 + j * 2.25; pts.push(intoA5(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, 0.8)); }
           path5(t, pts, 12, 'comet', { tele: 1.0, n: 5, gap: 0.035, col: 'p', at: (ta, x, y) => ring5(t, x, y, 11, 3.2, 'nova', R() * TAU, { r0: 0.3, tele: ta - t, hid: 1, life: 3.5 }) });
         }
       } },
-      { name: 'ELEMENTAL DETONATION SPELL', dur: 4.2, fn(h, T0, T1, B) {   // STARFALL: stars land in two spirals closing on where you stood; each bursts into shurikens
+      { name: 'ELEMENTAL DETONATION SPELL', dur: 4.2, heavy: 1, fn(h, T0, T1, B) {   // STARFALL: stars land in two spirals closing on where you stood; each bursts into shurikens
         if (once5(T0, T1, B)) Object.assign(h.sg, { x: S.p.x, y: S.p.y, a: S.rng() * TAU, d: S.rng() < 0.5 ? 1 : -1 });
         const g = h.sg; if (g.x === undefined) return;
         for (const [t, k] of ticks(T0, T1, B, B + 2.9, per5(0.12))) { const r = 6.8 * (1 - Math.min(1, k / 24)) + 0.6, a = g.a + g.d * k * 0.7; for (const o of [0, Math.PI]) pillar5(t, g.x + Math.cos(a + o) * r, g.y + Math.sin(a + o) * r, { kind: 'star', tele: 0.85, r: 0.9, dmg: 140, burst: { n: 5, spd: 3.4, k: 'shur', off: a, life: 2.4 } }); }
@@ -2063,7 +2067,7 @@ const HAI5 = {
     basic: [1.0, (h, t) => { const a = leadA(h.x, h.y, 5.8, 0.6); for (const o of [-0.16, 0.16]) e5(t, { cx: h.x, cy: h.y, r0: 1.2, vr: 5.8, th: a + o, k: 'nbolt', wa: 0.25, wf: 8, life: 3.4 }); }],
     tick(h, T0, T1) {   // the dead rise to serve: a pair of skeletons every 11 s, four at most
       if (h.st.raise === undefined) h.st.raise = h.T + 3;
-      if (T1 < h.st.raise) return;
+      if (T1 < h.st.raise || heavy5(T1)) return;
       h.st.raise = T1 + 11;
       if (S.mobs.filter(m => m.kind === 'skel' && m.deadT === Infinity).length > 2) return;
       const pa = Math.atan2(S.p.y, S.p.x);
@@ -2077,7 +2081,7 @@ const HAI5 = {
           path5(t, P, 13, 'soul', { tele: 1.1, n: 6, gap: 0.04, col: 'e', at: (ta, x, y, q) => { if (q < 5) ring5(t, x, y, 10, 3.0, 'skull', Math.atan2(y - cy, x - cx) - Math.PI / 2 + TAU / 20, { r0: 0.4, tele: ta - t, hid: 1, life: 3, gaps: [[0.5, 0.5]] }); } });
         }
       } },
-      { name: 'RITUAL SKULL', dur: 4.4, fn(h, T0, T1, B) {   // DEATH BLOSSOM: souls loop out from him and back, the petals of a flower he stands in; keep your distance
+      { name: 'RITUAL SKULL', dur: 4.4, heavy: 1, fn(h, T0, T1, B) {   // DEATH BLOSSOM: souls loop out from him and back, the petals of a flower he stands in; keep your distance
         if (once5(T0, T1, B)) { h.sg.a = S.rng() * TAU; h.sg.d = S.rng() < 0.5 ? 1 : -1; h.hold = B + 4.2; }
         for (const [t] of ticks(T0, T1, B + 0.2, B + 3.2, per5(0.11))) for (let a = 0; a < 7; a++) e5(t, { cx: h.x, cy: h.y, r0: 1.2, vr: 6.4, ar: -4, w: 0.55 * h.sg.d, th: h.sg.a + a * TAU / 7 + (t - B) * 0.8 * h.sg.d, k: 'soul', life: 3.2 });
       } },
@@ -2086,7 +2090,7 @@ const HAI5 = {
   mystic: {
     basic: [1.0, (h, t) => fan5(t, h.x, h.y, 3, 0.13, 8.0, 'ice', { r0: 1.2, th: leadA(h.x, h.y, 8.0, 0.6) })],
     sigs: [
-      { name: 'ORB OF CONFLICT', dur: 4.6, fn(h, T0, T1, B) {   // STASIS: she spins out a spiral of ice; every shot in the hall stops dead, then creeps on the way it was going
+      { name: 'ORB OF CONFLICT', dur: 4.6, heavy: 1, fn(h, T0, T1, B) {   // STASIS: she spins out a spiral of ice; every shot in the hall stops dead, then creeps on the way it was going
         if (once5(T0, T1, B)) { S.fx.push({ T: B, type: 'stasisUp', x: h.x, y: h.y }); S.ev.push({ T: B, type: 'chargeUp' }); }
         for (const [t] of ticks(T0, T1, B + 0.1, B + 1.25, per5(0.1))) for (let a = 0; a < 5; a++) e5(t, { cx: h.x, cy: h.y, r0: 1.2, vr: 6, th: a * TAU / 5 + 2.2 * (t - B), k: 'ice', life: 3 });
         if (once5(T0, T1, B + 1.3)) {
@@ -2097,7 +2101,7 @@ const HAI5 = {
       } },
       { name: 'IMPRISONMENT ORB', dur: 4.4, fn(h, T0, T1, B) {   // a cage of frost around you: three rings, one gap each; slip out through all three before they close
         if (!once5(T0, T1, B)) return;
-        const x = S.p.x, y = S.p.y, g1 = S.rng(), g2 = g1 + (S.rng() < 0.5 ? 0.3 : -0.3), g3 = g2 + (S.rng() < 0.5 ? 0.3 : -0.3), hold = 2.3;
+        const x = S.p.x, y = S.p.y, g1 = S.rng(), g2 = g1 + (S.rng() < 0.5 ? 0.3 : -0.3), g3 = g2 + (S.rng() < 0.5 ? 0.3 : -0.3), hold = 2.7;
         if (Math.hypot(h.x - x, h.y - y) < 7) blink5(h, B, ...spot5(h, 8.5, 0), 'c');   // (she steps out of her own cage first)
         [[2.2, 22, g1], [3.9, 36, g2], [5.6, 50, g3]].forEach(([r, n, g]) => { const w = 3.9 / (TAU * r); ring5(B, x, y, n, -3.6, 'frost', 0, { r0: r, dl: hold, arm: 0.35, life: hold + r / 3.6, gaps: [[g - w / 2, w]] }); });
         S.f5.cage = { T0: B, T1: B + hold + 1.6, x, y, g: [[2.2, g1 * TAU], [3.9, g2 * TAU], [5.6, g3 * TAU]] };
@@ -2109,10 +2113,10 @@ const HAI5 = {
   priest: {
     basic: [1.3, (h, t) => { const a = leadA(h.x, h.y, 8.5, 0.5); for (let j = 0; j < 2; j++) for (const o of j ? [-0.07, 0.07] : [-0.14, 0, 0.14]) e5(t + j * 0.09, { cx: h.x, cy: h.y, r0: 1.3, vr: 8.5, th: a + o, k: 'wbolt', life: 3.4 }); S.ev.push({ T: t, type: 'aim' }); }],
     sigs: [
-      { name: 'WAND OF RECOMPENSE', dur: 4.6, fn(h, T0, T1, B) {   // lances of light that carom off the walls, trailing light that burns a moment
+      { name: 'WAND OF RECOMPENSE', dur: 4.6, heavy: 1, fn(h, T0, T1, B) {   // lances of light that carom off the walls, trailing light that burns a moment
         for (const [t, k] of ticks(T0, T1, B + 0.3, B + 3.5, 1.05)) lance5(t, h.x, h.y, leadA(h.x, h.y, 8.5, 0.5) + (k % 3 - 1) * 0.35, 8.5, 4);
       } },
-      { name: 'TOME OF HOLY PROTECTION', dur: 3.2, fn(h, T0, T1, B) {   // a golden barrier on the most wounded of the rest of the choir, while smites fall on you
+      { name: 'TOME OF HOLY PROTECTION', dur: 3.2, heavy: 1, fn(h, T0, T1, B) {   // a golden barrier on the most wounded of the rest of the choir, while smites fall on you
         if (once5(T0, T1, B)) {
           const q = S.heroes.filter(c => c.deadT === Infinity && c !== h && c.dmg > 0).sort((a, c) => c.dmg / c.hp - a.dmg / a.hp)[0];
           if (q) { q.prot = B + 2.0; S.fx.push({ T: B, type: 'protect', x: q.x, y: q.y, h: q }); S.ev.push({ T: B, type: 'seal' }); }
@@ -2125,7 +2129,7 @@ const HAI5 = {
   sorc: {
     basic: [2.8, (h, t) => chain5(t, h.x, h.y, 4, 0.75)],
     sigs: [
-      { name: 'SCEPTER OF FULMINATION', dur: 4.9, fn(h, T0, T1, B) {   // lightning between the Cathedral's corners: the diagonals, the same turned half a step, then a star
+      { name: 'SCEPTER OF FULMINATION', dur: 4.9, heavy: 1, fn(h, T0, T1, B) {   // lightning between the Cathedral's corners: the diagonals, the same turned half a step, then a star
         const A = ARENAS5[1], c = j => { const a = A.rot + j * TAU / 8; return [Math.cos(a) * A.R * 0.96, Math.sin(a) * A.R * 0.96]; };
         for (const [t, k] of ticks(T0, T1, B - 1e-6, B + 3.5, 1.1)) {
           if (k % 3 === 0) for (let j = 0; j < 4; j++) bolt5(t, ...c(j), ...c(j + 4), 1.0);
@@ -2150,7 +2154,7 @@ const HAI5 = {
       const live = S.mobs.filter(m => m.kind === 'mirror' && m.owner === h && m.deadT === Infinity);
       if (live.length) { h.st.mir = Infinity; return; }
       if (h.st.mir === Infinity) { h.st.mir = T1 + 14; S.fx.push({ T: T1, type: 'shield', x: h.x, y: h.y }); S.ev.push({ T: T1, type: 'shield' }); }
-      if (T1 < (h.st.mir ?? h.T)) return;
+      if (T1 < (h.st.mir ?? h.T) || heavy5(T1)) return;
       h.st.mir = Infinity;
       const a = Math.atan2(h.y, h.x);
       for (const sd of [-1, 1]) { const [x, y] = intoA5(Math.cos(a + sd * 1.0) * 9, Math.sin(a + sd * 1.0) * 9, 1.4); spawnMob5({ kind: 'mirror', owner: h, sd, x, y, y0: y, T: T1, hp: 26000, r: 0.95, must: 1 }); }
@@ -2195,7 +2199,7 @@ const HAI5 = {
   huntress: {
     basic: [1.2, (h, t) => fan5(t, h.x, h.y, 2, 0.2, 8.5, 'arrow', { r0: 1.2, th: leadA(h.x, h.y, 8.5, 0.5), cover: 1 })],
     tick(h, T0, T1) {   // her hounds: two at her side; she calls the missing back every 14 s
-      if (T1 < (h.st.hunt ?? h.T)) return;
+      if (T1 < (h.st.hunt ?? h.T) || heavy5(T1)) return;
       h.st.hunt = T1 + 14;
       const have = S.mobs.filter(m => m.kind === 'wolf' && m.owner === h && m.deadT === Infinity).length;
       for (let k = have; k < 2; k++) { const a = S.rng() * TAU, [x, y] = intoA5(h.x + Math.cos(a) * 2, h.y + Math.sin(a) * 2, 1.0); spawnMob5({ kind: 'wolf', owner: h, x, y, T: T1 + 0.5, hp: 11000, r: 0.7, a: S.rng() * TAU, dir: k ? 1 : -1, next: T1 + 2.2 + k * 1.4 }); S.fx.push({ T: T1, type: 'raise', x, y }); }
@@ -2244,7 +2248,7 @@ const HAI5 = {
           for (let i = 0; i < 8; i++) { const th = o + i * TAU / 8; e5(B + 1.6, { cx: x, cy: y, r0: 1.0, vr: 6, ar: -8, stop: 0.75, th, k: 'dagger', life: 1.35 }); e5(B + 1.6, { cx: x, cy: y, r0: 3.25, vr: 5.5, th, k: 'dagger', dl: 1.35, rv: B + 2.95, tg: 1, hid: 1, cont: 1, life: 2.4 }); }
           S.ev.push({ T: B + 1.6, type: 'blink5' }); S.fx.push({ T: B + 1.6, type: 'smoke', x, y, out: 1 });
         }
-        for (const [t] of ticks(T0, T1, B + 2.5, B + 3.8, 0.6)) fan5(t, h.x, h.y, 7, 0.14, 11, 'dagger', { r0: 1.0, th: leadA(h.x, h.y, 9, 0.6), ar: -7.5, life: 1.45 });
+        for (const [t] of ticks(T0, T1, B + 2.5, B + 3.8, 0.6)) fan5(t, h.x, h.y, 5, 0.16, 11, 'dagger', { r0: 1.0, th: leadA(h.x, h.y, 9, 0.6), ar: -7.5, life: 1.45 });
       } },
       { name: 'DAGGER OF FOUL MALEVOLENCE', dur: 3.6, fn(h, T0, T1, B) {   // thrown daggers that come back to him, and fly on past him
         for (const [t] of ticks(T0, T1, B + 0.2, B + 1.6, 1.2)) fan5(t, h.x, h.y, 5, 0.24, 11, 'dagger', { r0: 1.0, th: leadA(h.x, h.y, 9, 0.5), ar: -7, life: 3.4 });
@@ -2313,11 +2317,11 @@ const PLAN5 = {
 // ---------- the rite: every other time a party breaks off, its heroes leap to their marks and play one great pattern together ----------
 // spot(h, j, n, st): where the j-th of the n heroes stands; fire(T0, T1, C, L, st): the pattern (C: the call; st: its memory)
 const SIG_GAP5 = 0.8, GOLD5 = Math.PI * (3 - Math.sqrt(5));   // (a breath between signatures; the golden angle)
-const RT5 = { spiral: 0.1, spin: 1.2, hymn: 0.75, needle: 0.14, volley: 0.95, gap: 0.85, web: 2.2 };   // pacing (s) of the rites' volleys
+const RT5 = { spiral: 0.2, spin: 0.9, hymn: 0.75, needle: 0.17, volley: 1.1, gap: 1.05, web: 2.2 };   // pacing (s) of the rites' volleys
 const RITE5 = {
   staff: { name: 'THE CONJUNCTION', dur: 8, spot: (h, j, n) => { const a = S.f5.a0 + j * TAU / n; return [Math.cos(a) * 6.4, Math.sin(a) * 5.8 - 0.4]; },
-    fire(T0, T1, C, L) {   // the casters stand on a triangle, each spinning a spiral of its own shot against its neighbour's: a woven lattice
-      for (const [t] of ticks(T0, T1, C + 1.0, C + 7.4, per5(RT5.spiral))) L.forEach((h, j) => { const d = j % 2 ? 1 : -1; for (let a = 0; a < 4; a++) e5(t, { cx: h.x, cy: h.y, r0: 1.3, vr: 6, w: 0.3 * d, th: d * RT5.spin * (t - C) + a * TAU / 4 + j, k: HERO5[h.id].k, life: 4 }); });
+    fire(T0, T1, C, L) {   // the casters stand on a triangle, each spinning a dotted spiral of its own shot against its neighbour's: a woven lattice
+      for (const [t] of ticks(T0, T1, C + 1.0, C + 7.4, per5(RT5.spiral))) L.forEach((h, j) => { const d = j % 2 ? 1 : -1; for (let a = 0; a < 3; a++) e5(t, { cx: h.x, cy: h.y, r0: 1.3, vr: 5.5, w: 0.15 * d, th: d * RT5.spin * (t - C) + a * TAU / 3 + j, k: HERO5[h.id].k, life: 4.2 }); });
     } },
   wand: { name: 'THE HYMN', dur: 8, spot: (h, j) => [[0, -3.4], [-7, 1.8], [7, 1.8]][j],
     fire(T0, T1, C, L, st) {   // the first of the choir sings rings of light through two gates that turn a step with every ring; the others thread needles at you
@@ -2339,10 +2343,10 @@ const RITE5 = {
     fire(T0, T1, C, L, st) {   // they surround you and throw fans of daggers that stop and hang in the air; then each one's daggers fly at you, one hero after another
       st.hang = st.hang || [];
       for (const [t, w] of ticks(T0, T1, C + 1.0, C + 6.0, RT5.web)) L.forEach((h, j) => {
-        const tr = t + 1.3 + j * 0.35, n = 5 + 2 * w, a = aimA(h.x, h.y);
+        const tr = t + 1.3 + j * 0.35, n = 3 + 2 * w, a = aimA(h.x, h.y);
         for (let i = 0; i < n; i++) { const th = a + (i - (n - 1) / 2) * 0.2; e5(t, { cx: h.x, cy: h.y, r0: 1.0, vr: 7.5, ar: -10, stop: 0.75, th, k: HERO5[h.id].k, life: tr - t }); st.hang.push({ tr, x: h.x + Math.cos(th) * 3.81, y: h.y + Math.sin(th) * 3.81, k: HERO5[h.id].k }); }
       });
-      for (const q of st.hang) if (once5(T0, T1, q.tr)) e5(q.tr, { cx: q.x, cy: q.y, r0: 0, vr: 8.5, th: aimA(q.x, q.y), k: q.k, life: 2.4 });
+      for (const q of st.hang) if (once5(T0, T1, q.tr)) e5(q.tr, { cx: q.x, cy: q.y, r0: 0, vr: 8, th: aimA(q.x, q.y), k: q.k, life: 2.5 });
     } },
 };
 // ---------- the chase: every other time a party breaks off, it hunts you for a few seconds ----------
@@ -2402,10 +2406,10 @@ function colosseum5(T0, T1) {
   }
   SRC5 = 'wave' + w;
   const s0 = f.st.s0, seals = S.mobs.filter(m => m.kind === 'seal' && m.deadT === Infinity && T1 >= m.T);
-  const blades = (t, n, spread) => fan5(t, pa.x, pa.y, n + 1, spread * 0.9, 8.5, 'blade', { r0: 1.2, th: leadA(pa.x, pa.y, 8.5, 0.7), cover: 1 });
+  const blades = (t, n, spread) => fan5(t, pa.x, pa.y, n - 1, spread * 1.1, 8.5, 'blade', { r0: 1.2, th: leadA(pa.x, pa.y, 8.5, 0.7), cover: 1 });
   const judge = (t, k) => { const g1 = (R() - 0.5) * 14, g2 = g1 + (g1 > 0 ? -1 : 1) * (5 + R() * 3); curtain5(t, k % 2 ? Math.PI / 2 : 0, 4.2, 0.72, [[g1, 1.1], [g2, 1.1]], 'holy', { cover: 1 }); S.ev.push({ T: t, type: 'judge' }); };
   if (w === 0) {   // FOR GLORY: he leaps onto you, again and again; her blades keep you moving
-    for (const [t, k] of ticks(T0, T1, s0, Infinity, per5(1.9))) (k % 2 ? rush5 : leap5)(wa, t);
+    for (const [t, k] of ticks(T0, T1, s0, Infinity, per5(2.2))) (k % 2 ? rush5 : leap5)(wa, t);
     for (const [t] of ticks(T0, T1, s0 + 0.4, Infinity, per5(0.85))) blades(t, 5, 0.15);
   } else if (w === 1) {   // HOLY GROUND: her seals spin crosses of light; he keeps leaping
     for (const [t] of ticks(T0, T1, s0 + 0.6, Infinity, per5(0.24))) for (const m of seals) { const base = m.dir * 1.1 * (t - s0); for (let a = 0; a < 4; a++) e5(t, { cx: m.x, cy: m.y, r0: 0.6, vr: 5, th: base + a * Math.PI / 2, k: 'hcross', life: 5, cover: 1 }); }
@@ -2457,7 +2461,7 @@ function trigger5(T) {
   endForm5(T, big);
   // a stance lands on the beat of the phase's music; a new weapon (or the last stand) restarts it
   const t1 = big ? T + dur : f.W0 + Math.ceil((T + dur - f.W0) / BEAT - 1e-9) * BEAT;
-  Object.assign(f, { i: i + 1, mT: T, T: t1, from: i, st: {}, big, sv: nf.surv ? Object.assign({ bonus: 0 }, nf.surv) : null, nextSig: undefined, turn: -1, cage: null, cover: null });
+  Object.assign(f, { i: i + 1, mT: T, T: t1, from: i, st: {}, big, sv: surv5(nf), nextSig: undefined, turn: -1, cage: null, cover: null });
   if (big) f.W0 = t1;
   f.log.push({ i: i + 1, mT: T, T: t1 });
   if (nf.party) spawnParty5(T + 1.4, t1);
@@ -2800,16 +2804,20 @@ function charge5(t, tl, spd) {
 }
 
 // ---------- VI. THE KNIGHT: Oryx himself ----------
-// the Last Stand's pacing: a new layer every `step` s; the periods of its shield rings (of ringN shields), blade showers, aimed fans and spiral arms
-const LS5 = { step: 7, ring: 1.2, ringN: 50, shower: 0.1, fan: 0.9, arm: 0.2 };
+// the Last Stand's pacing: a new layer every `step` s of his clock (your hits run it faster, so they bring the layers on sooner: everyone
+// sees the same storm, and a strong hand sees it in less time); the periods of its shield rings (of ringN shields), blade showers, aimed
+// fans and spiral arms, and how much faster it all comes in the last layer. For the last `rot` s of his clock the storm gives way to the
+// Last Sweep: his blade turns through the hall at `spin` rad/s with one safe lane, and the periods of its gated rings, blade fans, sword
+// strikes on you, and (from chT s in) the chasers
+const LS5 = { step: 8.75, ring: 1.3, ringN: 50, shower: 0.11, fan: 1.05, arm: 0.235, over: 1.2, rot: 25, spin: 0.5, ring2: 1.2, fan2: 0.75, pil: 1.0, ch: 2.2, chT: 8 };
 const AI5 = {
   knight1(T0, T1, B0) {   // SHIELD CHARGE: he runs you down along a marked path, and the impact rings out
     const b = S.boss;
     if (once5(T0, T1, B0 + 0.3)) S.fx.push({ T: B0 + 0.3, type: 'item', text: 'SHIELD OF OGMUR', h: null });
     cyc5(T0, T1, B0, 10, (B, c) => {
-      for (const [t] of ticks(T0, T1, B + 0.3, B + 10, per5(2.0))) charge5(t, 1.0, 11.5);
-      for (const [t] of ticks(T0, T1, B + 0.6, B + 10, per5(0.8))) fan5(t, b.x, b.y, 4, 0.2, 8, 'blade', { r0: 2.4 });
-      for (const [t, k] of ticks(T0, T1, B + 1.4, B + 10, per5(1.0))) ring5(t, b.x, b.y, 30, 3.0, 'nova', k * 0.41, { r0: 2.4 });
+      for (const [t] of ticks(T0, T1, B + 0.3, B + 10, per5(2.3))) charge5(t, 1.0, 11.5);
+      for (const [t] of ticks(T0, T1, B + 0.6, B + 10, per5(0.95))) fan5(t, b.x, b.y, 3, 0.22, 8, 'blade', { r0: 2.4 });
+      for (const [t, k] of ticks(T0, T1, B + 1.4, B + 10, per5(1.25))) ring5(t, b.x, b.y, 30, 3.0, 'nova', k * 0.41, { r0: 2.4 });
     });
   },
   knight2(T0, T1, B0) {   // BLADESTORM: his sword and its phantom sweep the whole hall; each has a different gap, so change lanes between them
@@ -2817,20 +2825,39 @@ const AI5 = {
     const arms = [{ th0: -Math.PI / 2, w: 0.48, r0: 3.1, r1: 12.4, gaps: [[5.2, 7.2]] }, { th0: Math.PI / 2, w: 0.48, r0: 3.1, r1: 12.4, gaps: [[8.6, 10.6]] }];
     if (!S.f5.st.lane) { S.f5.st.lane = 1; S.lanes5.push({ T0: B0, T1: Infinity, cx: 0, cy: 0, B0: Bs, arms, k: 'kblade' }); }
     setPiece(T0, T1, Bs, 1e9, Infinity, (t, dl, rv) => arms5(t, dl, rv, Bs, arms, 0, 0, 'kblade'));
-    for (const [t] of ticks(T0, T1, B0 + 1.8, Infinity, per5(0.45))) { pillar5(t, S.p.x, S.p.y, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160, burst: { n: 4, spd: 3.0, k: 'blade', life: 2.5 } }); const a = R() * TAU; pillar5(t, S.p.x + Math.cos(a) * 2.5, S.p.y + Math.sin(a) * 2.5, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160 }); }   // the second sword only blocks the way
-    for (const [t, k] of ticks(T0, T1, B0 + 2.5, Infinity, per5(1.0))) { const g = R(); ring5(t, b.x, b.y, 52, 3.6, 'nova', k * 0.3, { r0: 3.0, gaps: [[g, 3 / 52], [g + 0.5, 3 / 52]] }); }
-    for (const [t] of ticks(T0, T1, B0 + 2.0, Infinity, per5(0.65))) fan5(t, b.x, b.y, 5, 0.15, 8.5, 'blade', { r0: 2.8 });
+    for (const [t] of ticks(T0, T1, B0 + 1.8, Infinity, per5(0.55))) { pillar5(t, S.p.x, S.p.y, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160, burst: { n: 4, spd: 3.0, k: 'blade', life: 2.5 } }); const a = R() * TAU; pillar5(t, S.p.x + Math.cos(a) * 2.5, S.p.y + Math.sin(a) * 2.5, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160 }); }   // the second sword only blocks the way
+    for (const [t, k] of ticks(T0, T1, B0 + 2.5, Infinity, per5(1.2))) { const g = R(); ring5(t, b.x, b.y, 52, 3.6, 'nova', k * 0.3, { r0: 3.0, gaps: [[g, 3 / 52], [g + 0.5, 3 / 52]] }); }
+    for (const [t] of ticks(T0, T1, B0 + 2.0, Infinity, per5(0.8))) fan5(t, b.x, b.y, 5, 0.15, 8.5, 'blade', { r0: 2.8 });
   },
-  knight3(T0, T1, B0) {   // LAST STAND: no lanes to run for this time; a storm of every sword he took, read and threaded where you stand
-    const L5 = LS5, b = S.boss, R = S.rng, lvl = Math.floor(Math.max(0, T1 - B0) / L5.step), F = lvl >= 3 ? 1.2 : 1, far = 14;   // (far: every shot is gone once it is past the wall)
-    // the Shield of Ogmur: slow rings of shields with no gap; slip between two plates as each one passes (they spread wider farther out)
-    for (const [t] of ticks(T0, T1, B0, Infinity, per5(L5.ring / F))) ring5(t, b.x, b.y, L5.ringN, 2.6, 'kwall', R() * TAU, { r0: 3.0, life: (far - 3) / 2.6 });
-    // a shower of blades flung every way, each a golden angle on from the last: they spread evenly, in three speeds
-    for (const [t, k] of ticks(T0, T1, B0 + 0.4, Infinity, per5(L5.shower / F))) for (let j = 0; j < 3; j++) { const v = 3.5 + 1.5 * j; e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: v, th: (3 * k + j) * GOLD5, k: 'blade', life: (far - 2.8) / v }); }
-    // then fans at where you stand: a short step aside is enough
-    if (lvl >= 1) for (const [t] of ticks(T0, T1, B0 + L5.step, Infinity, per5(L5.fan / F))) fan5(t, b.x, b.y, 7, 0.12, 8, 'blade', { r0: 2.6, life: (far - 2.6) / 8 });
-    // then two sets of spiral arms turning against each other: a lattice that drifts past you
-    if (lvl >= 2) for (const [t] of ticks(T0, T1, B0 + 2 * L5.step, Infinity, per5(L5.arm / F))) { const u = t - B0; for (let a = 0; a < 4; a++) for (const d of [1, -1]) e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: 4, th: d * 0.45 * u + a * Math.PI / 2 + (d < 0 ? Math.PI / 4 : 0), k: 'nova', life: (far - 2.8) / 4 }); }
+  knight3(T0, T1, B0) {   // LAST STAND: first a storm of every sword he took, read and threaded where you stand; then the Last Sweep
+    const L5 = LS5, f = S.f5, b = S.boss, R = S.rng, left = survLeft5(T1), far = 14;   // (far: every shot is gone once it is past the wall)
+    if (left > L5.rot) {   // I. THE STORM: a new layer every L5.step s of his clock
+      const lvl = Math.floor(Math.max(0, f.sv.base - left) / L5.step), F = lvl >= 3 ? L5.over : 1;
+      // the Shield of Ogmur: slow rings of shields with no gap; slip between two plates as each one passes (they spread wider farther out)
+      for (const [t] of ticks(T0, T1, B0, Infinity, per5(L5.ring / F))) ring5(t, b.x, b.y, L5.ringN, 2.6, 'kwall', R() * TAU, { r0: 3.0, life: (far - 3) / 2.6 });
+      // a shower of blades flung every way, each a golden angle on from the last: they spread evenly, in three speeds
+      for (const [t, k] of ticks(T0, T1, B0 + 0.4, Infinity, per5(L5.shower / F))) for (let j = 0; j < 3; j++) { const v = 3.5 + 1.5 * j; e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: v, th: (3 * k + j) * GOLD5, k: 'blade', life: (far - 2.8) / v }); }
+      // then fans at where you stand: a short step aside is enough
+      if (lvl >= 1) for (const [t] of ticks(T0, T1, B0, Infinity, per5(L5.fan / F))) fan5(t, b.x, b.y, 7, 0.12, 8, 'blade', { r0: 2.6, life: (far - 2.6) / 8 });
+      // then two sets of spiral arms turning against each other: a lattice that drifts past you
+      if (lvl >= 2) for (const [t] of ticks(T0, T1, B0, Infinity, per5(L5.arm / F))) { const u = t - B0; for (let a = 0; a < 4; a++) for (const d of [1, -1]) e5(t, { cx: b.x, cy: b.y, r0: 2.8, vr: 4, th: d * 0.45 * u + a * Math.PI / 2 + (d < 0 ? Math.PI / 4 : 0), k: 'nova', life: (far - 2.8) / 4 }); }
+      return;
+    }
+    // II. THE LAST SWEEP: the storm clears, and his great blade turns through the hall; stand in its lane as it passes, and run the lane
+    // to the gaps of his rings while swords fall where you stand
+    const st = f.st;
+    if (st.sw === undefined) {
+      st.sw = T1; const Bs = T1 + 1.5, arms = [{ th0: Math.atan2(S.p.y, S.p.x) + Math.PI, w: L5.spin, r0: 3.1, r1: 12.4, gaps: [[6.4, 8.4]] }];   // (it rises across the hall from you)
+      st.lane = { Bs, arms }; S.lanes5.push({ T0: T1, T1: Infinity, cx: 0, cy: 0, B0: Bs, arms, k: 'kblade' });
+      dissolve(() => true, T1); S.pillars = []; S.tele = [];
+      S.fx.push({ T: T1, type: 'wave', text: 'THE LAST SWEEP' }); S.ev.push({ T: T1, type: 'wave' }); S.fx.push({ T: T1 + 0.3, type: 'item', text: 'CRYSTAL SWORD', h: null });
+    }
+    const s0 = st.sw, { Bs, arms } = st.lane;
+    setPiece(T0, T1, Bs, 1e9, Infinity, (t, dl, rv) => arms5(t, dl, rv, Bs, arms, 0, 0, 'kblade'));
+    for (const [t] of ticks(T0, T1, s0 + 1.0, Infinity, per5(L5.ring2))) { const g = R(); ring5(t, b.x, b.y, 56, 4.6, 'kwall', R() * TAU, { r0: 3.0, gaps: [0, 1 / 3, 2 / 3].map(q => [g + q, 4 / 56]) }); }
+    for (const [t] of ticks(T0, T1, s0 + 1.3, Infinity, per5(L5.fan2))) fan5(t, b.x, b.y, 6, 0.15, 9, 'blade', { r0: 2.6 });
+    for (const [t] of ticks(T0, T1, s0 + 2.0, Infinity, per5(L5.pil))) pillar5(t, S.p.x, S.p.y, { kind: 'sword', tele: 0.8, r: 0.9, dmg: 160, burst: { n: 4, spd: 3.0, k: 'blade', life: 2.5 } });
+    for (const [t, k] of ticks(T0, T1, s0 + L5.chT, Infinity, per5(L5.ch))) chasers(t, b.x, b.y, 4, k * 0.8);
   },
 };
 
